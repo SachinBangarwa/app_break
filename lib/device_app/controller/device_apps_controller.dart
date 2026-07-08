@@ -10,6 +10,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
+import 'package:testproject/device_app/screens/app_launch_delay_dialog.dart';
 
 class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   final allApps = <AppInfo>[].obs;
@@ -224,16 +225,30 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> launchApp(String packageName) async {
+    String appName = packageName;
     try {
-      await InstalledApps.startApp(packageName);
-    } catch (e) {
-      Get.snackbar(
-        'Launch Error',
-        'Could not launch app: $e',
-        backgroundColor: Colors.redAccent,
-        colorText: Colors.white,
-      );
-    }
+      final app = allApps.firstWhere((app) => app.packageName == packageName);
+      appName = app.name;
+    } catch (_) {}
+
+    Get.dialog(
+      AppLaunchDelayDialog(
+        appName: appName,
+        onCountdownComplete: () async {
+          try {
+            await InstalledApps.startApp(packageName);
+          } catch (e) {
+            Get.snackbar(
+              'Launch Error',
+              'Could not launch app: $e',
+              backgroundColor: Colors.redAccent,
+              colorText: Colors.white,
+            );
+          }
+        },
+      ),
+      barrierDismissible: false,
+    );
   }
 
   Future<void> updateLimit(String packageName, int selectedMinutes, String appName) async {

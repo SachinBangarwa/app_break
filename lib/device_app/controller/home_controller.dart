@@ -9,6 +9,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/controller/notifications_controller.dart';
+import 'package:testproject/device_app/screens/app_launch_delay_dialog.dart';
 
 import 'package:flutter/services.dart';
 
@@ -161,16 +162,30 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> launchApp(String packageName) async {
+    String appName = packageName;
     try {
-      await InstalledApps.startApp(packageName);
-    } catch (e) {
-      Get.snackbar(
-        'Launch Error',
-        'Could not launch app: $e',
-        backgroundColor: Colors.redAccent,
-        colorText: Colors.white,
-      );
-    }
+      final app = allApps.firstWhere((app) => app.packageName == packageName);
+      appName = app.name;
+    } catch (_) {}
+
+    Get.dialog(
+      AppLaunchDelayDialog(
+        appName: appName,
+        onCountdownComplete: () async {
+          try {
+            await InstalledApps.startApp(packageName);
+          } catch (e) {
+            Get.snackbar(
+              'Launch Error',
+              'Could not launch app: $e',
+              backgroundColor: Colors.redAccent,
+              colorText: Colors.white,
+            );
+          }
+        },
+      ),
+      barrierDismissible: false,
+    );
   }
 
   Future<void> updateAppLimit(String packageName, int limitMs, String appName) async {
