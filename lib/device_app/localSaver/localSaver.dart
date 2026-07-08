@@ -14,6 +14,7 @@ class UsageDataSaver {
   static String openAppStart = 'open_app_start';
   static String activeBlockedPackage = 'active_blocked_package';
   static String activeBlockedName = 'active_blocked_name';
+  static String notificationSaverEnabled = 'is_notification_saver_enabled';
 
   // ---------------------------------------------------------------------
   // Per-package key prefixes (actual key = prefix + packageName)
@@ -23,6 +24,7 @@ class UsageDataSaver {
   static String limitPrefix = 'limit_';
   static String snoozeUntilPrefix = 'snooze_until_';
   static String namePrefix = 'name_';
+  static String timeLeftPrefix = 'time_left_';
 
   // =======================================================================
   // last_poll_time
@@ -174,6 +176,27 @@ class UsageDataSaver {
   }
 
   // =======================================================================
+  // limit config & time left helpers
+  // =======================================================================
+  static Future<void> saveLimitConfig(String packageName, String appName, int limitMs, int timeLeftMs) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.setString('$namePrefix$packageName', appName);
+    await preferences.setInt('$limitPrefix$packageName', limitMs);
+    await preferences.setInt('$timeLeftPrefix$packageName', timeLeftMs);
+  }
+
+  static Future<int> getTimeLeft(String packageName) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    final limit = preferences.getInt('$limitPrefix$packageName') ?? 0;
+    return preferences.getInt('$timeLeftPrefix$packageName') ?? limit;
+  }
+
+  static Future<bool> saveTimeLeft(String packageName, int timeLeftMs) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setInt('$timeLeftPrefix$packageName', timeLeftMs);
+  }
+
+  // =======================================================================
   // Force-reload prefs from disk (call once at the start of a poll cycle,
   // same as `prefs.reload()` before).
   // =======================================================================
@@ -183,16 +206,42 @@ class UsageDataSaver {
   }
 
   // =======================================================================
-  // Wipe all usage_*/committed_usage_* keys — called on day rollover.
+  // Wipe all usage_*/committed_usage_*/time_left_* keys — called on day rollover.
   // =======================================================================
   static Future<void> resetAllUsageForNewDay() async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
     final allKeys = preferences.getKeys();
     for (final k in allKeys) {
-      if (k.startsWith(usagePrefix) || k.startsWith(committedUsagePrefix)) {
+      if (k.startsWith(usagePrefix) ||
+          k.startsWith(committedUsagePrefix) ||
+          k.startsWith(timeLeftPrefix)) {
         await preferences.remove(k);
       }
     }
     await preferences.remove(openApp);
+  }
+
+  /// Clears all keys for a specific package when uninstalled.
+  static Future<void> clearLimitConfig(String packageName) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.remove('$namePrefix$packageName');
+    await preferences.remove('$limitPrefix$packageName');
+    await preferences.remove('$timeLeftPrefix$packageName');
+    await preferences.remove('$usagePrefix$packageName');
+    await preferences.remove('$committedUsagePrefix$packageName');
+    await preferences.remove('$snoozeUntilPrefix$packageName');
+  }
+
+  /// Sets whether the notification saver is enabled or disabled.
+  static Future<bool> saveNotificationSaverEnabled(bool enabled) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    // Use the flutter. prefix implicitly handled by SharedPreferences package
+    return await preferences.setBool(notificationSaverEnabled, enabled);
+  }
+
+  /// Checks if the notification saver is enabled (default: true).
+  static Future<bool> isNotificationSaverEnabled() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(notificationSaverEnabled) ?? true;
   }
 }

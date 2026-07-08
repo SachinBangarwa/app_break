@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import '../localSaver/localSaver.dart';
 class OverlayWindow extends StatefulWidget {
   const OverlayWindow({super.key});
@@ -82,6 +83,10 @@ class _OverlayWindowState extends State<OverlayWindow> {
       // 1. New limit सेव करें
       final limitSaved = await UsageDataSaver.saveLimit(_packageName, newLimitMs);
 
+      // Increment timeLeft by 2 minutes (snooze period)
+      final currentLeft = await UsageDataSaver.getTimeLeft(_packageName);
+      await UsageDataSaver.saveTimeLeft(_packageName, currentLeft + (2 * 60000));
+
       // 2. Snooze timestamp सेट करें (2 minutes from now)
       final snoozeUntil = DateTime.now()
           .add(const Duration(minutes: 2))
@@ -92,6 +97,14 @@ class _OverlayWindowState extends State<OverlayWindow> {
       if (limitSaved && snoozeSaved) {
         SharedPreferences preferences = await SharedPreferences.getInstance();
         await preferences.remove(UsageDataSaver.activeBlockedPackage);
+
+        try {
+          final service = FlutterBackgroundService();
+          service.invoke('limitChanged', {'packageName': _packageName});
+        } catch (e) {
+          debugPrint('Error invoking limitChanged: $e');
+        }
+
         await Future.delayed(const Duration(milliseconds: 300));
       }
     } catch (e) {

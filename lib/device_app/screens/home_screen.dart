@@ -4,6 +4,7 @@ import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:testproject/device_app/screens/device_apps_screen.dart';
 import 'package:testproject/device_app/controller/home_controller.dart';
+import 'package:testproject/device_app/screens/notifications_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -240,7 +241,23 @@ class HomeScreen extends StatelessWidget {
               child: SafeArea(
                 child: Column(
                   children: [
-                    const SizedBox(height: 48),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.notifications_none_rounded, 
+                              color: Colors.white70, 
+                              size: 26
+                            ),
+                            onPressed: () => Get.to(() => const NotificationsScreen()),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     
                     // Clock and Date Widget
                     Center(
@@ -298,7 +315,7 @@ class HomeScreen extends StatelessWidget {
                             crossAxisCount: 4,
                             mainAxisSpacing: 20,
                             crossAxisSpacing: 20,
-                            childAspectRatio: 0.85,
+                            childAspectRatio: 0.72,
                           ),
                           itemCount: controller.desktopApps.length,
                           itemBuilder: (context, index) {
@@ -539,7 +556,7 @@ class HomeScreen extends StatelessWidget {
                               crossAxisCount: 4,
                               mainAxisSpacing: 24,
                               crossAxisSpacing: 16,
-                              childAspectRatio: 0.82,
+                              childAspectRatio: 0.72,
                             ),
                             itemCount: controller.filteredApps.length,
                             itemBuilder: (context, index) {

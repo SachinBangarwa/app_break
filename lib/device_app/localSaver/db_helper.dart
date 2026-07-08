@@ -19,7 +19,24 @@ class AppDbHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path, 
+      version: 1, 
+      onCreate: _createDB,
+      onOpen: _onOpen,
+    );
+  }
+
+  Future _onOpen(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        packageName TEXT,
+        title TEXT,
+        body TEXT,
+        timestamp INTEGER
+      )
+    ''');
   }
 
   Future _createDB(Database db, int version) async {
@@ -207,5 +224,76 @@ class AppDbHelper {
     );
     if (maps.isEmpty) return false;
     return maps.first['isFavorite'] == 1;
+  }
+
+  /// Inserts a single newly installed app into SQLite database.
+  Future<AppInfo?> addSingleApp(String packageName) async {
+    try {
+      final db = await database;
+      final AppInfo? detailedApp = await InstalledApps.getAppInfo(packageName);
+      if (detailedApp != null) {
+        final defaultFavorites = const [
+          'com.android.chrome',
+          'com.google.android.youtube',
+          'com.whatsapp',
+          'com.openai.chatgpt'
+        ];
+        final int isFav = defaultFavorites.contains(packageName) ? 1 : 0;
+
+        await db.insert(
+          'installed_apps',
+          {
+            'packageName': detailedApp.packageName,
+            'displayName': detailedApp.name,
+            'icon': detailedApp.icon,
+            'isSystemApp': detailedApp.isSystemApp ? 1 : 0,
+            'isFavorite': isFav,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        return detailedApp;
+      }
+    } catch (e) {
+      debugPrint("Error inserting single app $packageName: $e");
+    }
+    return null;
+  }
+
+  /// Deletes a single uninstalled app from SQLite database.
+  Future<void> removeSingleApp(String packageName) async {
+    try {
+      final db = await database;
+      await db.delete(
+        'installed_apps',
+        where: 'packageName = ?',
+        whereArgs: [packageName],
+      );
+    } catch (e) {
+      debugPrint("Error deleting single app $packageName: $e");
+    }
+  }
+
+  /// Fetches all saved notifications from SQLite database (newest first).
+  Future<List<Map<String, dynamic>>> getNotifications() async {
+    try {
+      final db = await database;
+      return await db.query(
+        'notifications',
+        orderBy: 'timestamp DESC',
+      );
+    } catch (e) {
+      debugPrint("Error fetching notifications: $e");
+      return [];
+    }
+  }
+
+  /// Clears all saved notifications from SQLite database.
+  Future<void> clearAllNotifications() async {
+    try {
+      final db = await database;
+      await db.delete('notifications');
+    } catch (e) {
+      debugPrint("Error clearing notifications: $e");
+    }
   }
 }

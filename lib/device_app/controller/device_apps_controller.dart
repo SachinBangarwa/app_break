@@ -9,6 +9,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
+import 'package:testproject/device_app/localSaver/localSaver.dart';
 
 class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   final allApps = <AppInfo>[].obs;
@@ -195,6 +196,7 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       }
 
       // 3. Fetch Installed Apps from SQLite database
+      await AppDbHelper.instance.syncAppsWithSystem();
       final apps = await AppDbHelper.instance.getApps(excludeSystemApps: true);
       
       if (hasUsagePermission.value) {
@@ -235,13 +237,28 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> updateLimit(String packageName, int selectedMinutes, String appName) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (selectedMinutes == 0) {
-      await prefs.remove('limit_$packageName');
-      await prefs.remove('name_$packageName');
-    } else {
-      await prefs.setInt('limit_$packageName', selectedMinutes * 60000);
-      await prefs.setString('name_$packageName', appName);
+    final limitMs = selectedMinutes * 60000;
+    
+    // Save configurations correctly and calculate remaining timeLeft
+    final usage = await UsageDataSaver.getCommittedUsage(packageName);
+    final timeLeft = (limitMs - usage).clamp(0, limitMs);
+    await UsageDataSaver.saveLimitConfig(packageName, appName, limitMs, timeLeft);
+
+    if (limitMs == 0) {
+      final prefs = await SharedPreferences.getInstance();
+      final blockedPkg = prefs.getString(UsageDataSaver.activeBlockedPackage) ?? '';
+      if (blockedPkg == packageName) {
+        await prefs.remove(UsageDataSaver.activeBlockedPackage);
+      }
+    }
+
+    // Send notification signal to the background service
+    try {
+      final service = FlutterBackgroundService();
+      print("[DeviceAppsController] Sending limitChanged for $packageName");
+      service.invoke('limitChanged', {'packageName': packageName});
+    } catch (e) {
+      debugPrint('Error invoking limitChanged: $e');
     }
     
     await checkServiceAndPermissions();
