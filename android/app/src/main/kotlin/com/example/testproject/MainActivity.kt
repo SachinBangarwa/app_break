@@ -9,6 +9,10 @@ import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.provider.Settings
+import android.text.TextUtils
+import android.content.ComponentName
+import android.accessibilityservice.AccessibilityService
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.testproject/package_change"
@@ -30,6 +34,20 @@ class MainActivity : FlutterActivity() {
                     try {
                         val intent =
                             Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("ERROR", "Could not open settings: ${e.message}", null)
+                    }
+                }
+
+                "checkAccessibilityPermission" -> {
+                    result.success(isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java))
+                }
+
+                "openAccessibilitySettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         startActivity(intent)
                         result.success(true)
                     } catch (e: Exception) {
@@ -92,6 +110,26 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    private fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<out AccessibilityService>): Boolean {
+        val expectedComponentName = ComponentName(context, serviceClass)
+        val enabledServicesSetting = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+
+        val colonSplitter = TextUtils.SimpleStringSplitter(':')
+        colonSplitter.setString(enabledServicesSetting)
+
+        while (colonSplitter.hasNext()) {
+            val componentNameString = colonSplitter.next()
+            val enabledService = ComponentName.unflattenFromString(componentNameString)
+            if (enabledService != null && enabledService == expectedComponentName) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun isNotificationServiceEnabled(context: Context): Boolean {

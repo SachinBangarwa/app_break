@@ -6,12 +6,17 @@ import 'package:usage_stats/usage_stats.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:testproject/device_app/screens/home_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingController extends GetxController with WidgetsBindingObserver {
   final hasNotificationPermission = false.obs;
   final hasUsagePermission = false.obs;
   final hasOverlayPermission = false.obs;
+  final hasAccessibilityPermission = false.obs;
   final isLoading = true.obs;
+
+  static const _channel = MethodChannel('com.example.testproject/package_change');
 
   @override
   void onInit() {
@@ -39,10 +44,34 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
     final usageGranted = await UsageStats.checkUsagePermission() ?? false;
     final overlayGranted = await FlutterOverlayWindow.isPermissionGranted();
 
+    bool accessibilityGranted = false;
+    try {
+      accessibilityGranted = await _channel.invokeMethod<bool>('checkAccessibilityPermission') ?? false;
+    } catch (e) {
+      debugPrint("Error checking accessibility permission: $e");
+    }
+
     hasNotificationPermission.value = notifGranted;
     hasUsagePermission.value = usageGranted;
     hasOverlayPermission.value = overlayGranted;
+    hasAccessibilityPermission.value = accessibilityGranted;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_accessibility_enabled', accessibilityGranted);
+    } catch (e) {
+      debugPrint("Error saving accessibility permission to prefs: $e");
+    }
+
     isLoading.value = false;
+  }
+
+  Future<void> requestAccessibility() async {
+    try {
+      await _channel.invokeMethod('openAccessibilitySettings');
+    } catch (e) {
+      debugPrint("Error opening accessibility settings: $e");
+    }
   }
 
   Future<void> requestNotification() async {

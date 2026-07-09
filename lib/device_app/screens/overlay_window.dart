@@ -96,6 +96,7 @@ class _OverlayWindowState extends State<OverlayWindow> {
       // 3. Blocked marker हटाएं
       if (limitSaved && snoozeSaved) {
         SharedPreferences preferences = await SharedPreferences.getInstance();
+        await preferences.setString('active_foreground_package', _packageName);
         await preferences.remove(UsageDataSaver.activeBlockedPackage);
 
         try {
@@ -298,11 +299,18 @@ class _OverlayWindowState extends State<OverlayWindow> {
                         if (_packageName.isNotEmpty) {
                           try {
                             final snoozeUntil = DateTime.now()
-                                .add(const Duration(seconds: 15))
+                                .add(const Duration(seconds: 5))
                                 .millisecondsSinceEpoch;
                             await UsageDataSaver.saveSnoozeUntil(_packageName, snoozeUntil);
                             SharedPreferences preferences = await SharedPreferences.getInstance();
+                            await preferences.setString('active_foreground_package', _packageName);
                             await preferences.remove(UsageDataSaver.activeBlockedPackage);
+                            try {
+                              final service = FlutterBackgroundService();
+                              service.invoke('limitChanged', {'packageName': _packageName});
+                            } catch (e) {
+                              debugPrint('Error invoking limitChanged from close: $e');
+                            }
                             await Future.delayed(const Duration(milliseconds: 300));
                           } catch (e) {
                             debugPrint("Error setting grace snooze: $e");
