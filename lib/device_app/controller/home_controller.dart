@@ -33,6 +33,9 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('is_launcher_foreground', true);
+    });
     _startClock();
     loadLauncherData();
     _setupPackageChannelListener();
@@ -77,6 +80,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Print whatever event/state comes in directly:
     print("--- [LifeCycle Event] state: $state ---");
+    SharedPreferences.getInstance().then((prefs) {
+      if (state == AppLifecycleState.resumed) {
+        prefs.setBool('is_launcher_foreground', true);
+      } else {
+        prefs.setBool('is_launcher_foreground', false);
+      }
+    });
+
     if (state == AppLifecycleState.resumed) {
       // Screen refresh on resume disabled to prevent flickering
       print("--- [LifeCycle] Resume detected, screen refresh skipped ---");

@@ -65,6 +65,17 @@ void onStart(ServiceInstance service) async {
       final pkg = event['packageName'] as String?;
       if (pkg != null && pkg.isNotEmpty) {
         print("[AppLimitService] Received limitChanged event for $pkg. Re-configuring...");
+        
+        final snoozeUntil = event['snoozeUntil'] as int?;
+        if (snoozeUntil != null) {
+          await UsageDataSaver.saveSnoozeUntil(pkg, snoozeUntil);
+        }
+        
+        final newLimitMs = event['newLimitMs'] as int?;
+        if (newLimitMs != null) {
+          await UsageDataSaver.saveLimit(pkg, newLimitMs);
+        }
+
         await _checkAndConfigureServiceState();
       }
     }
@@ -358,6 +369,10 @@ Future<void> _handleAccessibilityPackageChange(String newPackage) async {
       return;
     }
 
+    if (newPackage == openApp && openApp != null && !_appTimers.containsKey(openApp)) {
+      openApp = null;
+    }
+
     if (newPackage != openApp) {
       print("[AppLimitService] [ACCESSIBILITY] App changed from $openApp to $newPackage");
 
@@ -368,6 +383,24 @@ Future<void> _handleAccessibilityPackageChange(String newPackage) async {
 
       if (openApp != null && openApp.isNotEmpty) {
         await _commitOpenSession(openApp, openAppStart, now);
+      }
+
+      // Sync today's usage from the OS for the newly opened app to ensure committedUsage is accurate!
+      if (newPackage.isNotEmpty) {
+        final hasUsagePermission = await UsageStats.checkUsagePermission() ?? false;
+        if (hasUsagePermission) {
+          final systemUsageToday = await _calculateSystemUsageForPackage(newPackage);
+          await UsageDataSaver.saveCommittedUsage(newPackage, systemUsageToday);
+          await UsageDataSaver.saveUsage(newPackage, systemUsageToday);
+          
+          final limitMs = await UsageDataSaver.getLimit(newPackage);
+          if (limitMs > 0) {
+            final timeLeft = (limitMs - systemUsageToday).clamp(0, limitMs);
+            await UsageDataSaver.saveTimeLeft(newPackage, timeLeft);
+          }
+          
+          print("[AppLimitService] [ACCESSIBILITY] Synced system usage for $newPackage: ${systemUsageToday / 1000}s today.");
+        }
       }
 
       openApp = newPackage.isNotEmpty ? newPackage : null;
@@ -531,6 +564,13 @@ Future<void> _runPollCycle() async {
 }
 
 Future<void> _blockApp(String activePackage, int limitMs) async {
+  final prefs = await SharedPreferences.getInstance();
+  final isLauncherForeground = prefs.getBool('is_launcher_foreground') ?? false;
+  if (isLauncherForeground) {
+    print("[AppLimitService] Blocker skipped: Launcher is currently in the foreground.");
+    return;
+  }
+
   final isOverlayActive = await FlutterOverlayWindow.isActive();
   final activeBlocked = await UsageDataSaver.getActiveBlockedPackage() ?? '';
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:installed_apps/installed_apps.dart';
 import '../localSaver/localSaver.dart';
 class OverlayWindow extends StatefulWidget {
   const OverlayWindow({super.key});
@@ -101,7 +102,11 @@ class _OverlayWindowState extends State<OverlayWindow> {
 
         try {
           final service = FlutterBackgroundService();
-          service.invoke('limitChanged', {'packageName': _packageName});
+          service.invoke('limitChanged', {
+            'packageName': _packageName,
+            'snoozeUntil': snoozeUntil,
+            'newLimitMs': newLimitMs,
+          });
         } catch (e) {
           debugPrint('Error invoking limitChanged: $e');
         }
@@ -298,22 +303,21 @@ class _OverlayWindowState extends State<OverlayWindow> {
                           : () async {
                         if (_packageName.isNotEmpty) {
                           try {
-                            final snoozeUntil = DateTime.now()
-                                .add(const Duration(seconds: 5))
-                                .millisecondsSinceEpoch;
-                            await UsageDataSaver.saveSnoozeUntil(_packageName, snoozeUntil);
                             SharedPreferences preferences = await SharedPreferences.getInstance();
-                            await preferences.setString('active_foreground_package', _packageName);
                             await preferences.remove(UsageDataSaver.activeBlockedPackage);
                             try {
                               final service = FlutterBackgroundService();
-                              service.invoke('limitChanged', {'packageName': _packageName});
+                              service.invoke('limitChanged', {
+                                'packageName': _packageName,
+                              });
                             } catch (e) {
                               debugPrint('Error invoking limitChanged from close: $e');
                             }
+                            // Start launcher to go Home
+                            await InstalledApps.startApp("com.example.testproject");
                             await Future.delayed(const Duration(milliseconds: 300));
                           } catch (e) {
-                            debugPrint("Error setting grace snooze: $e");
+                            debugPrint("Error going home on close: $e");
                           }
                         }
                         await FlutterOverlayWindow.closeOverlay();
