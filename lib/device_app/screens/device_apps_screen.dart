@@ -9,6 +9,85 @@ import '../controller/device_apps_controller.dart';
 class DeviceAppsScreen extends StatelessWidget {
   const DeviceAppsScreen({super.key});
 
+  Future<void> _showDelayDialog(BuildContext context, AppInfo app, DeviceAppsController controller) async {
+    final currentEnabled = controller.delayEnabledMap[app.packageName] ?? false;
+    final currentSeconds = controller.delaySecondsMap[app.packageName] ?? 10;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        bool tempEnabled = currentEnabled;
+        int tempSeconds = currentSeconds;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text('Mindful Delay: ${app.name}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Enable a mindful countdown delay overlay before this app launches to help reduce impulsive openings.'),
+                  const SizedBox(height: 20),
+                  SwitchListTile(
+                    title: const Text('Enable Delay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    subtitle: const Text('Shows countdown overlay on launch'),
+                    value: tempEnabled,
+                    activeColor: Colors.deepPurple,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (value) {
+                      setDialogState(() {
+                        tempEnabled = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  if (tempEnabled)
+                    DropdownButtonFormField<int>(
+                      value: tempSeconds,
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        labelText: 'Countdown Duration',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 3, child: Text('3 Seconds')),
+                        DropdownMenuItem(value: 5, child: Text('5 Seconds')),
+                        DropdownMenuItem(value: 10, child: Text('10 Seconds')),
+                        DropdownMenuItem(value: 15, child: Text('15 Seconds')),
+                        DropdownMenuItem(value: 30, child: Text('30 Seconds')),
+                      ],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          tempSeconds = value ?? 10;
+                        });
+                      },
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await controller.updateDelayConfig(app.packageName, tempEnabled, tempSeconds);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _showLimitDialog(BuildContext context, AppInfo app, DeviceAppsController controller) async {
     final currentLimitMs = controller.limitsMap[app.packageName] ?? 0;
     int currentLimitMinutes = currentLimitMs > 0 ? (currentLimitMs / 60000).round() : 0;
@@ -552,6 +631,46 @@ class DeviceAppsScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  
+                  // Delay Action Chip
+                  Obx(() {
+                    final delayEnabled = controller.delayEnabledMap[packageName] ?? false;
+                    final delaySecs = controller.delaySecondsMap[packageName] ?? 10;
+                    
+                    return GestureDetector(
+                      onTap: () => _showDelayDialog(context, app, controller),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: delayEnabled ? Colors.deepPurple.shade50 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: delayEnabled ? Colors.deepPurple.shade200 : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              delayEnabled ? Icons.av_timer_rounded : Icons.timer_outlined,
+                              size: 12,
+                              color: delayEnabled ? Colors.deepPurple.shade700 : Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              delayEnabled ? '${delaySecs}s Delay' : 'Set Delay',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: delayEnabled ? Colors.deepPurple.shade800 : Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
                 ],
               ),
               subtitle: Padding(

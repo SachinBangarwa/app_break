@@ -54,7 +54,7 @@ class AppDbHelper {
 
   /// Syncs system apps with our SQLite database using a fast diff-check.
   /// Fetches apps list without icons first to check for changes.
-  Future<void> syncAppsWithSystem() async {
+  Future<bool> syncAppsWithSystem() async {
     final db = await database;
 
     // 1. Fetch package names and names from system (WITHOUT icons - extremely fast!)
@@ -100,7 +100,8 @@ class AppDbHelper {
     }
 
     // 5. Apply changes in a single transaction if any modification is needed
-    if (uninstalled.isNotEmpty || newApps.isNotEmpty || changedNameApps.isNotEmpty) {
+    final hasChanges = uninstalled.isNotEmpty || newApps.isNotEmpty || changedNameApps.isNotEmpty;
+    if (hasChanges) {
       await db.transaction((txn) async {
         // Delete uninstalled apps
         for (var pkg in uninstalled) {
@@ -153,6 +154,7 @@ class AppDbHelper {
         }
       });
     }
+    return hasChanges;
   }
 
   /// Reads apps from database, optionally filtering system apps.

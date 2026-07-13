@@ -6,7 +6,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:testproject/device_app/screens/home_screen.dart';
 import 'package:testproject/device_app/screens/onboarding_screen.dart';
 import 'package:testproject/device_app/service/app_limit_service.dart';
-import 'package:testproject/device_app/screens/overlay_window.dart';
+import 'package:testproject/device_app/screens/overlay_dispatcher.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +29,7 @@ void overlayMain() {
   runApp(
     const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: OverlayWindow(),
+      home: OverlayDispatcher(),
     ),
   );
 }

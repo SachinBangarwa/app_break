@@ -10,12 +10,13 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
-import 'package:testproject/device_app/screens/app_launch_delay_dialog.dart';
 
 class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   final allApps = <AppInfo>[].obs;
   final usageMap = <String, int>{}.obs;
   final limitsMap = <String, int>{}.obs;
+  final delayEnabledMap = <String, bool>{}.obs;
+  final delaySecondsMap = <String, int>{}.obs;
   final isLoading = false.obs;
   final errorMessage = ''.obs;
   
@@ -60,16 +61,26 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       Map<String, int> tempLimitsMap = {};
+      Map<String, bool> tempDelayEnabledMap = {};
+      Map<String, int> tempDelaySecondsMap = {};
+
       for (var app in allApps) {
         final limit = prefs.getInt('limit_${app.packageName}') ?? 0;
         if (limit > 0) {
           tempLimitsMap[app.packageName] = limit;
         }
+
+        final delayEnabled = prefs.getBool('delay_enabled_${app.packageName}') ?? false;
+        final delaySecs = prefs.getInt('delay_seconds_${app.packageName}') ?? 10;
+        tempDelayEnabledMap[app.packageName] = delayEnabled;
+        tempDelaySecondsMap[app.packageName] = delaySecs;
       }
       
       hasOverlayPermission.value = hasOverlay;
       isServiceRunning.value = isRunning;
       limitsMap.assignAll(tempLimitsMap);
+      delayEnabledMap.assignAll(tempDelayEnabledMap);
+      delaySecondsMap.assignAll(tempDelaySecondsMap);
 
       await autoStartServiceIfPermissionsGranted();
     } catch (e) {
@@ -197,7 +208,6 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       }
 
       // 3. Fetch Installed Apps from SQLite database
-      await AppDbHelper.instance.syncAppsWithSystem();
       final apps = await AppDbHelper.instance.getApps(excludeSystemApps: true);
       
       if (hasUsagePermission.value) {
@@ -231,24 +241,83 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       appName = app.name;
     } catch (_) {}
 
-    Get.dialog(
-      AppLaunchDelayDialog(
-        appName: appName,
-        onCountdownComplete: () async {
-          try {
-            await InstalledApps.startApp(packageName);
-          } catch (e) {
-            Get.snackbar(
-              'Launch Error',
-              'Could not launch app: $e',
-              backgroundColor: Colors.redAccent,
-              colorText: Colors.white,
-            );
-          }
-        },
-      ),
-      barrierDismissible: false,
-    );
+    final prefs = await SharedPreferences.getInstance();
+    final isAccessibilityEnabled = prefs.getBool('is_accessibility_enabled') ?? false;
+
+    final delayEnabled = prefs.getBool('delay_enabled_$packageName') ?? false;
+    final delaySeconds = prefs.getInt('delay_seconds_$packageName') ?? 10;
+
+    if (isAccessibilityEnabled) {
+      try {
+        await InstalledApps.startApp(packageName);
+      } catch (e) {
+        Get.snackbar(
+          'Launch Error',
+          'Could not launch app: $e',
+          backgroundColor: Colors.redAccent,
+          colorText: Colors.white,
+        );
+      }
+    } else {
+      if (delayEnabled) {
+        try {
+          await prefs.setString('active_overlay_type', 'restrict');
+          await prefs.setString('active_restrict_package', packageName);
+          await prefs.setString('launch_on_dismiss_package', packageName);
+
+          await FlutterOverlayWindow.showOverlay(
+            alignment: OverlayAlignment.center,
+            height: WindowSize.matchParent,
+            width: WindowSize.matchParent,
+            overlayTitle: "Focus Pause",
+            overlayContent: "Taking a mindful break.",
+            enableDrag: false,
+          );
+
+          Future.delayed(const Duration(milliseconds: 400), () {
+            FlutterOverlayWindow.shareData({
+              'overlayType': 'restrict',
+              'packageName': packageName,
+              'appName': appName,
+              'delaySeconds': delaySeconds,
+            });
+          });
+        } catch (e) {
+          Get.snackbar(
+            'Launch Error',
+            'Could not show overlay: $e',
+            backgroundColor: Colors.redAccent,
+            colorText: Colors.white,
+          );
+        }
+      } else {
+        try {
+          await InstalledApps.startApp(packageName);
+        } catch (e) {
+          Get.snackbar(
+            'Launch Error',
+            'Could not launch app: $e',
+            backgroundColor: Colors.redAccent,
+            colorText: Colors.white,
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> updateDelayConfig(String packageName, bool enabled, int seconds) async {
+    await UsageDataSaver.saveDelayEnabled(packageName, enabled);
+    await UsageDataSaver.saveDelaySeconds(packageName, seconds);
+
+    // Send notification signal to the background service
+    try {
+      final service = FlutterBackgroundService();
+      service.invoke('limitChanged', {'packageName': packageName});
+    } catch (e) {
+      debugPrint('Error invoking limitChanged: $e');
+    }
+
+    await checkServiceAndPermissions();
   }
 
   Future<void> updateLimit(String packageName, int selectedMinutes, String appName) async {

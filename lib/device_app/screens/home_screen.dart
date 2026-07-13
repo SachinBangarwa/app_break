@@ -83,6 +83,15 @@ class HomeScreen extends StatelessWidget {
                   _showLimitSetupDialog(context, app, controller);
                 },
               ),
+              // Set delay option
+              ListTile(
+                leading: const Icon(Icons.av_timer_rounded, color: Colors.deepPurpleAccent),
+                title: const Text('Set Mindful Delay', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDelaySetupDialog(context, app, controller);
+                },
+              ),
               // App Info option
               ListTile(
                 leading: const Icon(Icons.info_outline, color: Colors.blueAccent),
@@ -181,6 +190,102 @@ class HomeScreen extends StatelessWidget {
         snackPosition: SnackPosition.BOTTOM,
       );
     }
+  }
+
+  void _showDelaySetupDialog(BuildContext context, AppInfo app, HomeController controller) async {
+    final currentEnabled = controller.delayEnabledMap[app.packageName] ?? false;
+    final currentSeconds = controller.delaySecondsMap[app.packageName] ?? 10;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        bool tempEnabled = currentEnabled;
+        int tempSeconds = currentSeconds;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1F1D2B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text(
+                'Mindful Delay: ${app.name}',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Enable a mindful countdown delay overlay before this app launches to help reduce impulsive openings.',
+                    style: TextStyle(color: Colors.grey.shade300, fontSize: 14),
+                  ),
+                  const SizedBox(height: 20),
+                  SwitchListTile(
+                    title: const Text('Enable Delay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
+                    subtitle: Text('Shows countdown overlay on launch', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                    value: tempEnabled,
+                    activeColor: Colors.deepPurpleAccent,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (value) {
+                      setDialogState(() {
+                        tempEnabled = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  if (tempEnabled)
+                    DropdownButtonFormField<int>(
+                      value: tempSeconds,
+                      dropdownColor: const Color(0xFF1F1D2B),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade600),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.deepPurpleAccent),
+                        ),
+                        labelText: 'Countdown Duration',
+                        labelStyle: TextStyle(color: Colors.grey.shade400),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 3, child: Text('3 Seconds', style: TextStyle(color: Colors.white))),
+                        DropdownMenuItem(value: 5, child: Text('5 Seconds', style: TextStyle(color: Colors.white))),
+                        DropdownMenuItem(value: 10, child: Text('10 Seconds', style: TextStyle(color: Colors.white))),
+                        DropdownMenuItem(value: 15, child: Text('15 Seconds', style: TextStyle(color: Colors.white))),
+                        DropdownMenuItem(value: 30, child: Text('30 Seconds', style: TextStyle(color: Colors.white))),
+                      ],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          tempSeconds = value ?? 10;
+                        });
+                      },
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await controller.updateDelayConfig(app.packageName, tempEnabled, tempSeconds);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurpleAccent,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override

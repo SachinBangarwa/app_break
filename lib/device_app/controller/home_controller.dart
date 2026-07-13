@@ -6,10 +6,10 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/controller/notifications_controller.dart';
-import 'package:testproject/device_app/screens/app_launch_delay_dialog.dart';
 
 import 'package:flutter/services.dart';
 
@@ -18,12 +18,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   final filteredApps = <AppInfo>[].obs;
   final desktopApps = <AppInfo>[].obs;
   final limitsMap = <String, int>{}.obs;
+  final delayEnabledMap = <String, bool>{}.obs;
+  final delaySecondsMap = <String, int>{}.obs;
 
   final drawerHeightFraction = 0.0.obs;
   final isDrawerOpen = false.obs;
 
   final currentTime = DateTime.now().obs;
-  final isLoading = true.obs;
+  final isLoading = false.obs;
 
   Timer? _clockTimer;
 
@@ -38,6 +40,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     });
     _startClock();
     loadLauncherData();
+    _syncOnceOnStartup();
     _setupPackageChannelListener();
   }
 
@@ -123,8 +126,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
   Future<void> loadLauncherData() async {
     try {
-      // 1. Sync system apps to SQLite database using fast diff check
-      await AppDbHelper.instance.syncAppsWithSystem();
+      // Load directly from local SQL database cache
       await loadLocalAppsFromCache();
     } catch (e) {
       debugPrint('Error loading launcher apps: $e');
@@ -132,30 +134,57 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _syncOnceOnStartup() async {
+    try {
+      // Run system app sync with SQLite database once on launcher start
+      final hasChanges = await AppDbHelper.instance.syncAppsWithSystem();
+      if (hasChanges) {
+        print("[HomeController] System app changes detected. Reloading cache.");
+        await loadLocalAppsFromCache();
+      } else {
+        print("[HomeController] No system app changes detected on startup.");
+      }
+    } catch (e) {
+      debugPrint('Error syncing apps on startup: $e');
+    }
+  }
+
   Future<void> loadLocalAppsFromCache() async {
     try {
-      // Load all apps directly from SQLite
+      // 1. Load all apps directly from SQLite (super fast!)
       List<AppInfo> apps = await AppDbHelper.instance.getApps(excludeSystemApps: false);
 
-      // 2. Fetch limits
+      // 2. Select Desktop Shortcut Apps (Favorites) from SQLite
+      List<AppInfo> tempDesktopApps = await AppDbHelper.instance.getFavoriteApps();
+
+      // Show apps on UI instantly!
+      allApps.assignAll(apps);
+      filteredApps.assignAll(apps);
+      desktopApps.assignAll(tempDesktopApps);
+      isLoading.value = false;
+
+      // 3. Fetch limits & delay configs from SharedPreferences in the background
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       Map<String, int> tempLimitsMap = {};
+      Map<String, bool> tempDelayEnabledMap = {};
+      Map<String, int> tempDelaySecondsMap = {};
+
       for (var app in apps) {
         final limit = prefs.getInt('limit_${app.packageName}') ?? 0;
         if (limit > 0) {
           tempLimitsMap[app.packageName] = limit;
         }
+
+        final delayEnabled = prefs.getBool('delay_enabled_${app.packageName}') ?? false;
+        final delaySecs = prefs.getInt('delay_seconds_${app.packageName}') ?? 10;
+        tempDelayEnabledMap[app.packageName] = delayEnabled;
+        tempDelaySecondsMap[app.packageName] = delaySecs;
       }
 
-      // 3. Select Desktop Shortcut Apps (Favorites) from SQLite
-      List<AppInfo> tempDesktopApps = await AppDbHelper.instance.getFavoriteApps();
-
-      allApps.assignAll(apps);
-      filteredApps.assignAll(apps);
-      desktopApps.assignAll(tempDesktopApps);
       limitsMap.assignAll(tempLimitsMap);
-      isLoading.value = false;
+      delayEnabledMap.assignAll(tempDelayEnabledMap);
+      delaySecondsMap.assignAll(tempDelaySecondsMap);
     } catch (e) {
       debugPrint('Error loading local apps from SQLite cache: $e');
       isLoading.value = false;
@@ -179,24 +208,82 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       appName = app.name;
     } catch (_) {}
 
-    Get.dialog(
-      AppLaunchDelayDialog(
-        appName: appName,
-        onCountdownComplete: () async {
-          try {
-            await InstalledApps.startApp(packageName);
-          } catch (e) {
-            Get.snackbar(
-              'Launch Error',
-              'Could not launch app: $e',
-              backgroundColor: Colors.redAccent,
-              colorText: Colors.white,
-            );
-          }
-        },
-      ),
-      barrierDismissible: false,
-    );
+    final prefs = await SharedPreferences.getInstance();
+    final isAccessibilityEnabled = prefs.getBool('is_accessibility_enabled') ?? false;
+    final delayEnabled = prefs.getBool('delay_enabled_$packageName') ?? false;
+    final delaySeconds = prefs.getInt('delay_seconds_$packageName') ?? 10;
+
+    if (isAccessibilityEnabled) {
+      try {
+        await InstalledApps.startApp(packageName);
+      } catch (e) {
+        Get.snackbar(
+          'Launch Error',
+          'Could not launch app: $e',
+          backgroundColor: Colors.redAccent,
+          colorText: Colors.white,
+        );
+      }
+    } else {
+      if (delayEnabled) {
+        try {
+          await prefs.setString('active_overlay_type', 'restrict');
+          await prefs.setString('active_restrict_package', packageName);
+          await prefs.setString('launch_on_dismiss_package', packageName);
+
+          await FlutterOverlayWindow.showOverlay(
+            alignment: OverlayAlignment.center,
+            height: WindowSize.matchParent,
+            width: WindowSize.matchParent,
+            overlayTitle: "Focus Pause",
+            overlayContent: "Taking a mindful break.",
+            enableDrag: false,
+          );
+
+          Future.delayed(const Duration(milliseconds: 400), () {
+            FlutterOverlayWindow.shareData({
+              'overlayType': 'restrict',
+              'packageName': packageName,
+              'appName': appName,
+              'delaySeconds': delaySeconds,
+            });
+          });
+        } catch (e) {
+          Get.snackbar(
+            'Launch Error',
+            'Could not show overlay: $e',
+            backgroundColor: Colors.redAccent,
+            colorText: Colors.white,
+          );
+        }
+      } else {
+        try {
+          await InstalledApps.startApp(packageName);
+        } catch (e) {
+          Get.snackbar(
+            'Launch Error',
+            'Could not launch app: $e',
+            backgroundColor: Colors.redAccent,
+            colorText: Colors.white,
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> updateDelayConfig(String packageName, bool enabled, int seconds) async {
+    await UsageDataSaver.saveDelayEnabled(packageName, enabled);
+    await UsageDataSaver.saveDelaySeconds(packageName, seconds);
+
+    // Send notification signal to the background service
+    try {
+      final service = FlutterBackgroundService();
+      service.invoke('limitChanged', {'packageName': packageName});
+    } catch (e) {
+      debugPrint('Error invoking limitChanged: $e');
+    }
+
+    await loadLocalAppsFromCache();
   }
 
   Future<void> updateAppLimit(String packageName, int limitMs, String appName) async {

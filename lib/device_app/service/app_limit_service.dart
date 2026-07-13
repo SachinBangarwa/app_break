@@ -21,6 +21,73 @@ const int _pollingThresholdMs = 3 * 60 * 1000; // 3 minutes
 
 final Map<String, Timer> _appTimers = {};
 
+// No in-memory state variables here, using SharedPreferences for persistence and synchronization
+
+bool _isIgnoredPackage(String pkg) {
+  if (pkg.isEmpty) return true;
+  
+  final lowerPkg = pkg.toLowerCase();
+  
+  if (lowerPkg == 'android') return true;
+  if (lowerPkg == 'com.example.testproject') return true;
+  
+  if (lowerPkg.contains('launcher') ||
+      lowerPkg.contains('home') ||
+      lowerPkg.contains('systemui') ||
+      lowerPkg.contains('settings') ||
+      lowerPkg.contains('packageinstaller') ||
+      lowerPkg.contains('permissioncontroller') ||
+      lowerPkg.contains('inputmethod') ||
+      lowerPkg.contains('keyboard') ||
+      lowerPkg.contains('ime')) {
+    return true;
+  }
+  
+  return false;
+}
+
+Future<bool> _isPackageBlocked(String pkg, int now) async {
+  final limitMs = await UsageDataSaver.getLimit(pkg);
+  if (limitMs <= 0) return false;
+
+  final snoozeUntil = await UsageDataSaver.getSnoozeUntil(pkg);
+  if (now < snoozeUntil) return false;
+
+  final committedUsage = await UsageDataSaver.getCommittedUsage(pkg);
+  if (committedUsage >= limitMs) return true;
+  
+  return false;
+}
+
+Future<void> _triggerRestrictOverlay(String packageName) async {
+  final appName = await UsageDataSaver.getAppName(packageName);
+  
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('active_overlay_type', 'restrict');
+  await prefs.setString('active_restrict_package', packageName);
+  final delaySeconds = prefs.getInt('delay_seconds_$packageName') ?? 10;
+  
+  print("[AppLimitService] Showing restrict overlay for $appName.");
+
+  await FlutterOverlayWindow.showOverlay(
+    alignment: OverlayAlignment.center,
+    height: WindowSize.matchParent,
+    width: WindowSize.matchParent,
+    overlayTitle: "Focus Pause",
+    overlayContent: "Taking a mindful break.",
+    enableDrag: false,
+  );
+
+  Future.delayed(const Duration(milliseconds: 400), () {
+    FlutterOverlayWindow.shareData({
+      'overlayType': 'restrict',
+      'packageName': packageName,
+      'appName': appName,
+      'delaySeconds': delaySeconds,
+    });
+  });
+}
+
 class AppLimitService {
   static Future<void> initializeService() async {
     final service = FlutterBackgroundService();
@@ -360,6 +427,23 @@ Future<void> _handleAccessibilityPackageChange(String newPackage) async {
     await UsageDataSaver.reload();
     final now = DateTime.now().millisecondsSinceEpoch;
 
+    // 1. Handle ignored package detection and resetting restrict state
+    if (_isIgnoredPackage(newPackage)) {
+      final prefs = await SharedPreferences.getInstance();
+      if (newPackage == 'com.example.testproject') {
+        final isLauncherResumed = prefs.getBool('is_launcher_foreground') ?? false;
+        if (isLauncherResumed) {
+          await prefs.remove('last_restricted_package');
+          await prefs.remove('last_restricted_time');
+          print("[AppLimitService] [ACCESSIBILITY] Reset last restricted package on launcher return.");
+        }
+      } else {
+        await prefs.remove('last_restricted_package');
+        await prefs.remove('last_restricted_time');
+        print("[AppLimitService] [ACCESSIBILITY] Reset last restricted package on system/other app return: $newPackage");
+      }
+    }
+
     String? openApp = await UsageDataSaver.getOpenApp();
     if (openApp != null && openApp.isEmpty) openApp = null;
     int openAppStart = await UsageDataSaver.getOpenAppStart() ?? now;
@@ -386,7 +470,7 @@ Future<void> _handleAccessibilityPackageChange(String newPackage) async {
       }
 
       // Sync today's usage from the OS for the newly opened app to ensure committedUsage is accurate!
-      if (newPackage.isNotEmpty) {
+      if (newPackage.isNotEmpty && !_isIgnoredPackage(newPackage)) {
         final hasUsagePermission = await UsageStats.checkUsagePermission() ?? false;
         if (hasUsagePermission) {
           final systemUsageToday = await _calculateSystemUsageForPackage(newPackage);
@@ -403,6 +487,33 @@ Future<void> _handleAccessibilityPackageChange(String newPackage) async {
         }
       }
 
+      // Trigger overlays if it is a user app (not ignored)
+      if (newPackage.isNotEmpty && !_isIgnoredPackage(newPackage)) {
+        final isBlocked = await _isPackageBlocked(newPackage, now);
+        if (isBlocked) {
+          final limitMs = await UsageDataSaver.getLimit(newPackage);
+          await _blockApp(newPackage, limitMs);
+        } else {
+          // Trigger Focus Pause (AppRestrictOverlay) ONLY if delay is enabled
+          final prefs = await SharedPreferences.getInstance();
+          final isDelayEnabled = prefs.getBool('delay_enabled_$newPackage') ?? false;
+
+          if (isDelayEnabled) {
+            final lastRestrictedPackage = prefs.getString('last_restricted_package') ?? '';
+            final lastRestrictTime = prefs.getInt('last_restricted_time') ?? 0;
+
+            if (newPackage == lastRestrictedPackage && (now - lastRestrictTime) < 15000) {
+              print("[AppLimitService] [ACCESSIBILITY] Skipping restrict overlay for $newPackage (recently restricted).");
+            } else {
+              print("[AppLimitService] [ACCESSIBILITY] Triggering restrict overlay for $newPackage.");
+              await prefs.setString('last_restricted_package', newPackage);
+              await prefs.setInt('last_restricted_time', now);
+              await _triggerRestrictOverlay(newPackage);
+            }
+          }
+        }
+      }
+
       openApp = newPackage.isNotEmpty ? newPackage : null;
       openAppStart = now;
 
@@ -411,7 +522,7 @@ Future<void> _handleAccessibilityPackageChange(String newPackage) async {
       await UsageDataSaver.saveLastPollTime(now);
     }
 
-    if (openApp == null || openApp.isEmpty) return;
+    if (openApp == null || openApp.isEmpty || _isIgnoredPackage(openApp)) return;
 
     // Handles both snooze-expiry rescheduling and block-timer scheduling.
     await _scheduleAccessibilityCheck(openApp, openAppStart);
@@ -578,6 +689,7 @@ Future<void> _blockApp(String activePackage, int limitMs) async {
     final appName = await UsageDataSaver.getAppName(activePackage);
     print("[AppLimitService] Blocker triggered! Showing overlay for $appName.");
 
+    await prefs.setString('active_overlay_type', 'block');
     await UsageDataSaver.saveActiveBlockedPackage(activePackage);
     await UsageDataSaver.saveActiveBlockedName(appName);
 
@@ -592,6 +704,7 @@ Future<void> _blockApp(String activePackage, int limitMs) async {
 
     Future.delayed(_shareDataDelay, () {
       FlutterOverlayWindow.shareData({
+        'overlayType': 'block',
         'packageName': activePackage,
         'appName': appName,
         'limitMinutes': (limitMs / 60000).round(),

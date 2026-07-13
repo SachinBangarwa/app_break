@@ -7,7 +7,16 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:installed_apps/installed_apps.dart';
 import '../localSaver/localSaver.dart';
 class OverlayWindow extends StatefulWidget {
-  const OverlayWindow({super.key});
+  final String initialPackageName;
+  final String initialAppName;
+  final int initialLimitMinutes;
+
+  const OverlayWindow({
+    super.key,
+    this.initialPackageName = "",
+    this.initialAppName = "This application",
+    this.initialLimitMinutes = 0,
+  });
 
   @override
   State<OverlayWindow> createState() => _OverlayWindowState();
@@ -16,47 +25,45 @@ class _OverlayWindowState extends State<OverlayWindow> {
   String _appName = "This application";
   String _packageName = "";
   int _currentLimitMinutes = 0;
-  bool _isExtending = false; // इसे अब नीचे रीसेट किया जाएगा
-  StreamSubscription? _dataSubscription;
+  bool _isExtending = false;
 
   @override
   void initState() {
     super.initState();
+    _packageName = widget.initialPackageName;
+    _appName = widget.initialAppName;
+    _currentLimitMinutes = widget.initialLimitMinutes;
     _loadOverlayData();
-
-    // जब भी बैकग्राउंड सर्विस से नया ब्लॉक डेटा आएगा, हम लोडर को रीसेट कर देंगे
-    _dataSubscription = FlutterOverlayWindow.overlayListener.listen((event) {
-      if (event is Map) {
-        final pkg = event['packageName'] as String?;
-        final name = event['appName'] as String?;
-        final limitMin = event['limitMinutes'] as int?;
-        if (pkg != null && pkg.isNotEmpty) {
-          setState(() {
-            _packageName = pkg;
-            _appName = name ?? pkg;
-            if (limitMin != null) _currentLimitMinutes = limitMin;
-            _isExtending = false; // FIX 1: नया पॉपअप आने पर लोडर बंद करें
-          });
-        }
-      }
-    });
   }
 
   @override
-  void dispose() {
-    _dataSubscription?.cancel();
-    super.dispose();
+  void didUpdateWidget(covariant OverlayWindow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialPackageName != oldWidget.initialPackageName ||
+        widget.initialAppName != oldWidget.initialAppName ||
+        widget.initialLimitMinutes != oldWidget.initialLimitMinutes) {
+      setState(() {
+        _packageName = widget.initialPackageName;
+        _appName = widget.initialAppName;
+        _currentLimitMinutes = widget.initialLimitMinutes;
+        _isExtending = false;
+      });
+    }
   }
 
   Future<void> _loadOverlayData() async {
     await UsageDataSaver.reload();
-    final activePackage = await UsageDataSaver.getActiveBlockedPackage() ?? '';
-    final activeName = await UsageDataSaver.getActiveBlockedName() ?? 'This application';
+    final activePackage = _packageName.isNotEmpty 
+        ? _packageName 
+        : (await UsageDataSaver.getActiveBlockedPackage() ?? '');
+    final activeName = await UsageDataSaver.getAppName(activePackage);
     final limitMs = await UsageDataSaver.getLimit(activePackage);
 
     setState(() {
       _packageName = activePackage;
-      _appName = activeName;
+      if (activeName.isNotEmpty && activeName != activePackage) {
+        _appName = activeName;
+      }
       _currentLimitMinutes = (limitMs / 60000).round();
       _isExtending = false; // Safe fallback reset
     });
@@ -305,6 +312,8 @@ class _OverlayWindowState extends State<OverlayWindow> {
                           try {
                             SharedPreferences preferences = await SharedPreferences.getInstance();
                             await preferences.remove(UsageDataSaver.activeBlockedPackage);
+                            await preferences.remove('last_restricted_package');
+                            await preferences.remove('last_restricted_time');
                             try {
                               final service = FlutterBackgroundService();
                               service.invoke('limitChanged', {

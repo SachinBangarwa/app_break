@@ -25,6 +25,8 @@ class UsageDataSaver {
   static String snoozeUntilPrefix = 'snooze_until_';
   static String namePrefix = 'name_';
   static String timeLeftPrefix = 'time_left_';
+  static String delayEnabledPrefix = 'delay_enabled_';
+  static String delaySecondsPrefix = 'delay_seconds_';
 
   // =======================================================================
   // last_poll_time
@@ -197,6 +199,32 @@ class UsageDataSaver {
   }
 
   // =======================================================================
+  // delay_enabled_<package>
+  // =======================================================================
+  static Future<bool> saveDelayEnabled(String packageName, bool enabled) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setBool('$delayEnabledPrefix$packageName', enabled);
+  }
+
+  static Future<bool> isDelayEnabled(String packageName) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getBool('$delayEnabledPrefix$packageName') ?? false;
+  }
+
+  // =======================================================================
+  // delay_seconds_<package>
+  // =======================================================================
+  static Future<bool> saveDelaySeconds(String packageName, int seconds) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setInt('$delaySecondsPrefix$packageName', seconds);
+  }
+
+  static Future<int> getDelaySeconds(String packageName) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getInt('$delaySecondsPrefix$packageName') ?? 10;
+  }
+
+  // =======================================================================
   // Force-reload prefs from disk (call once at the start of a poll cycle,
   // same as `prefs.reload()` before).
   // =======================================================================
@@ -210,15 +238,19 @@ class UsageDataSaver {
   // =======================================================================
   static Future<void> resetAllUsageForNewDay() async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
-    final allKeys = preferences.getKeys();
+    final allKeys = preferences.getKeys().toList();
     for (final k in allKeys) {
       if (k.startsWith(usagePrefix) ||
           k.startsWith(committedUsagePrefix) ||
-          k.startsWith(timeLeftPrefix)) {
+          k.startsWith(timeLeftPrefix) ||
+          k.startsWith(snoozeUntilPrefix)) {
         await preferences.remove(k);
       }
     }
     await preferences.remove(openApp);
+    await preferences.remove(openAppStart);
+    await preferences.remove(activeBlockedPackage);
+    await preferences.remove(activeBlockedName);
   }
 
   /// Clears all keys for a specific package when uninstalled.
