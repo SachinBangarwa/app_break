@@ -241,6 +241,42 @@ class AppDbHelper {
     );
   }
 
+  /// Updates limit and usage status of an app.
+  Future<void> updateAppLimit(String packageName, int limitMs, int todayUsageMs) async {
+    final db = await database;
+    await db.update(
+      'installed_apps',
+      {
+        'todayLimit': limitMs,
+        'todayUsage': todayUsageMs,
+      },
+      where: 'packageName = ?',
+      whereArgs: [packageName],
+    );
+  }
+
+  /// Updates countdown delay of an app.
+  Future<void> updateAppCountdown(String packageName, int seconds) async {
+    final db = await database;
+    await db.update(
+      'installed_apps',
+      {'countdown': seconds},
+      where: 'packageName = ?',
+      whereArgs: [packageName],
+    );
+  }
+
+  /// Updates today usage of an app.
+  Future<void> updateAppUsage(String packageName, int usageMs) async {
+    final db = await database;
+    await db.update(
+      'installed_apps',
+      {'todayUsage': usageMs},
+      where: 'packageName = ?',
+      whereArgs: [packageName],
+    );
+  }
+
   /// Checks if an app is favorite.
   Future<bool> isAppFavorite(String packageName) async {
     final db = await database;

@@ -4,8 +4,8 @@ class CustomAppModel {
   final String packageName;
   final String displayName;
   final Uint8List? icon;
-  final bool isSystemApp;
-  final bool isFavorite;
+  final int isSystemApp;
+  final int isFavorite;
   final int countdown;
   final int lastOpened;
   final int todayLimit;
@@ -28,8 +28,8 @@ class CustomAppModel {
       packageName: map['packageName'] as String? ?? '',
       displayName: map['displayName'] as String? ?? '',
       icon: map['icon'] as Uint8List?,
-      isSystemApp: map['isSystemApp'] == 1,
-      isFavorite: map['isFavorite'] == 1,
+      isSystemApp: map['isSystemApp'] as int? ?? 0,
+      isFavorite: map['isFavorite'] as int? ?? 0,
       countdown: map['countdown'] as int? ?? 0,
       lastOpened: map['lastOpened'] as int? ?? 0,
       todayLimit: map['todayLimit'] as int? ?? 0,
