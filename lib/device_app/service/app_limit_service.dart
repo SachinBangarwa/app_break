@@ -303,8 +303,8 @@ Future<void> _checkAndConfigureServiceState() async {
       return;
     }
 
-    bool needsPolling = false;
-    final Map<String, int> activeLimits = {};
+    bool hasActiveLimits = false;
+    final List<String> appsToInitialize = [];
 
     for (final key in limitKeys) {
       final pkg = key.replaceFirst('limit_', '');
@@ -314,40 +314,25 @@ Future<void> _checkAndConfigureServiceState() async {
         continue;
       }
 
+      hasActiveLimits = true;
+      appsToInitialize.add(pkg);
+
       final todayUsageMs = await _calculateSystemUsageForPackage(pkg);
       final timeLeft = (limitMs - todayUsageMs).clamp(0, limitMs);
       await UsageDataSaver.saveTimeLeft(pkg, timeLeft);
       print("[AppLimitService] App: $pkg | Limit: ${limitMs / 60000} min | Today Usage (from OS Events): ${todayUsageMs / 1000}s | Time Left: ${timeLeft / 1000}s");
-
-      activeLimits[pkg] = timeLeft;
-
-      if (timeLeft <= _pollingThresholdMs) {
-        needsPolling = true;
-      }
     }
 
-    _isPollingActive = needsPolling;
+    _isPollingActive = hasActiveLimits;
 
     if (_isPollingActive) {
-      print("[AppLimitService] [DECISION] At least one app is near limit (<= 180s left). Activating 4-sec Polling Mode. NO TIMERS will be scheduled.");
-      for (final pkg in activeLimits.keys) {
-        if (activeLimits[pkg]! <= _pollingThresholdMs) {
-          await _initializePollingBaseline(pkg);
-        }
+      print("[AppLimitService] [DECISION] Accessibility is OFF and limits exist. Activating 4-second Polling Mode permanently.");
+      for (final pkg in appsToInitialize) {
+        await _initializePollingBaseline(pkg);
       }
       _startPollingLoop();
     } else {
-      print("[AppLimitService] [DECISION] All apps have plenty of time (> 180s left). Polling Mode DEACTIVATED. Scheduling quiet timers.");
-      for (final entry in activeLimits.entries) {
-        final pkg = entry.key;
-        final timeLeft = entry.value;
-        final timerDuration = timeLeft - _pollingThresholdMs;
-        _appTimers[pkg] = Timer(Duration(milliseconds: timerDuration), () async {
-          print("[AppLimitService] [WAKE_UP] Timer fired for $pkg. Remaining time hits 3-minute threshold. Re-configuring state.");
-          await _checkAndConfigureServiceState();
-        });
-        print("[AppLimitService] Scheduled quiet timer for $pkg to wake up in ${timerDuration / 1000}s.");
-      }
+      print("[AppLimitService] [DECISION] No active limits set. Polling loop deactivated.");
     }
 
     print("[AppLimitService] === [END] Re-configuration completed. Polling active: $_isPollingActive ===");

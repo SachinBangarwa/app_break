@@ -37,6 +37,28 @@ class AppDbHelper {
         timestamp INTEGER
       )
     ''');
+
+    // Dynamically add columns to installed_apps if they are missing
+    try {
+      final columns = await db.rawQuery('PRAGMA table_info(installed_apps)');
+      final columnNames = columns.map((c) => c['name'] as String).toSet();
+
+      final newCols = {
+        'countdown': 'INTEGER DEFAULT 0',
+        'lastOpened': 'INTEGER DEFAULT 0',
+        'todayLimit': 'INTEGER DEFAULT 0',
+        'todayUsage': 'INTEGER DEFAULT 0',
+      };
+
+      for (var entry in newCols.entries) {
+        if (!columnNames.contains(entry.key)) {
+          await db.execute('ALTER TABLE installed_apps ADD COLUMN ${entry.key} ${entry.value}');
+          print("[AppDbHelper] Added column ${entry.key} to installed_apps table.");
+        }
+      }
+    } catch (e) {
+      print("[AppDbHelper] Error adding missing columns: $e");
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -47,7 +69,11 @@ class AppDbHelper {
         displayName TEXT,
         icon BLOB,
         isSystemApp INTEGER,
-        isFavorite INTEGER DEFAULT 0
+        isFavorite INTEGER DEFAULT 0,
+        countdown INTEGER DEFAULT 0,
+        lastOpened INTEGER DEFAULT 0,
+        todayLimit INTEGER DEFAULT 0,
+        todayUsage INTEGER DEFAULT 0
       )
     ''');
   }
