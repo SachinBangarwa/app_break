@@ -3,6 +3,7 @@ import 'package:path/path.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:flutter/foundation.dart';
+import 'package:testproject/device_app/localSaver/custom_app_model.dart';
 
 class AppDbHelper {
   static final AppDbHelper instance = AppDbHelper._init();
@@ -155,13 +156,7 @@ class AppDbHelper {
           try {
             final AppInfo? detailedApp = await InstalledApps.getAppInfo(app.packageName);
             if (detailedApp != null) {
-              final defaultFavorites = const [
-                'com.android.chrome',
-                'com.google.android.youtube',
-                'com.whatsapp',
-                'com.openai.chatgpt'
-              ];
-              final int isFav = defaultFavorites.contains(app.packageName) ? 1 : 0;
+              final int isFav = 0;
 
               await txn.insert(
                 'installed_apps',
@@ -296,13 +291,7 @@ class AppDbHelper {
       final db = await database;
       final AppInfo? detailedApp = await InstalledApps.getAppInfo(packageName);
       if (detailedApp != null) {
-        final defaultFavorites = const [
-          'com.android.chrome',
-          'com.google.android.youtube',
-          'com.whatsapp',
-          'com.openai.chatgpt'
-        ];
-        final int isFav = defaultFavorites.contains(packageName) ? 1 : 0;
+        final int isFav = 0;
 
         await db.insert(
           'installed_apps',
@@ -358,6 +347,21 @@ class AppDbHelper {
       await db.delete('notifications');
     } catch (e) {
       debugPrint("Error clearing notifications: $e");
+    }
+  }
+
+  /// Retrieves only the active apps (where isFavorite, countdown, or todayLimit are configured).
+  Future<List<CustomAppModel>> getActiveAppsFromDb() async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'installed_apps',
+        where: 'isFavorite = 1 OR countdown > 0 OR todayLimit > 0',
+      );
+      return maps.map((row) => CustomAppModel.fromMap(row)).toList();
+    } catch (e) {
+      debugPrint("Error fetching active apps from db: $e");
+      return [];
     }
   }
 }

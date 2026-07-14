@@ -9,6 +9,8 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
+import 'package:testproject/device_app/localSaver/active_apps_manager.dart';
+import 'package:testproject/device_app/localSaver/custom_app_model.dart';
 import 'package:testproject/device_app/controller/notifications_controller.dart';
 
 import 'package:flutter/services.dart';
@@ -39,9 +41,54 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       prefs.setBool('is_launcher_foreground', true);
     });
     _startClock();
+    
+    _setupServiceSync();
+    _setupActiveAppsListener();
     loadLauncherData();
     _syncOnceOnStartup();
     _setupPackageChannelListener();
+  }
+
+  void _setupServiceSync() {
+    try {
+      final service = FlutterBackgroundService();
+      
+      // Full active list sync listener from Service
+      service.on('syncFullList').listen((event) {
+        if (event != null && event['apps'] != null) {
+          final List<dynamic> appsData = event['apps'];
+          final List<CustomAppModel> loadedApps = appsData.map<CustomAppModel>((data) => CustomAppModel.fromMap(Map<String, dynamic>.from(data))).toList();
+          
+          ActiveAppsManager.activeAppsList.clear();
+          ActiveAppsManager.activeAppsList.addAll(loadedApps);
+          print("[HomeController] Received full active list sync from Service: ${loadedApps.length} apps");
+        }
+      });
+
+      // Request full list sync in case service is already running
+      print("[HomeController] Requesting active apps sync from background service...");
+      service.invoke('requestActiveAppsSync');
+    } catch (e) {
+      print("[HomeController] Error setting up service sync: $e");
+    }
+  }
+
+  void _setupActiveAppsListener() {
+    // जब भी activeAppsList बदलेगी, फ़ेवरेट ऐप्स ऑटोमैटिक फ़िल्टर होकर UI में अपडेट हो जाएँगे
+    ever(ActiveAppsManager.activeAppsList, (dynamic activeAppsVal) {
+      final List<CustomAppModel> activeApps = List<CustomAppModel>.from(activeAppsVal as Iterable);
+      final List<AppInfo> favApps = activeApps
+          .where((app) => app.isFavorite == 1)
+          .map<AppInfo>((app) => AppInfo.create({
+                'name': app.displayName,
+                'package_name': app.packageName,
+                'icon': app.icon,
+                'is_system_app': app.isSystemApp == 1,
+              }))
+          .toList();
+      print("[HomeController] RAM activeAppsList updated. Syncing ${favApps.length} favorites to desktopApps");
+      desktopApps.assignAll(favApps);
+    });
   }
 
   void _setupPackageChannelListener() {
@@ -154,8 +201,16 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       // 1. Load all apps directly from SQLite (super fast!)
       List<AppInfo> apps = await AppDbHelper.instance.getApps(excludeSystemApps: false);
 
-      // 2. Select Desktop Shortcut Apps (Favorites) from SQLite
-      List<AppInfo> tempDesktopApps = await AppDbHelper.instance.getFavoriteApps();
+      // 2. Select Desktop Shortcut Apps (Favorites) from RAM activeAppsList instead of SQLite
+      final tempDesktopApps = ActiveAppsManager.activeAppsList
+          .where((app) => app.isFavorite == 1)
+          .map((app) => AppInfo.create({
+                'name': app.displayName,
+                'package_name': app.packageName,
+                'icon': app.icon,
+                'is_system_app': app.isSystemApp == 1,
+              }))
+          .toList();
 
       // Show apps on UI instantly!
       allApps.assignAll(apps);
@@ -272,25 +327,44 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> updateDelayConfig(String packageName, bool enabled, int seconds) async {
-    await UsageDataSaver.saveDelayEnabled(packageName, enabled);
-    await UsageDataSaver.saveDelaySeconds(packageName, seconds);
-
-    // Send notification signal to the background service
+    String displayName = packageName;
+    bool isSystemApp = false;
+    Uint8List? icon;
     try {
-      final service = FlutterBackgroundService();
-      service.invoke('limitChanged', {'packageName': packageName});
-    } catch (e) {
-      debugPrint('Error invoking limitChanged: $e');
-    }
+      final app = allApps.firstWhere((app) => app.packageName == packageName);
+      displayName = app.name;
+      isSystemApp = app.isSystemApp;
+      icon = app.icon;
+    } catch (_) {}
+
+    ActiveAppsManager.updateApp(
+      packageName: packageName,
+      displayName: displayName,
+      isSystemApp: isSystemApp ? 1 : 0,
+      countdown: enabled ? seconds : 0,
+      icon: icon,
+    );
 
     await loadLocalAppsFromCache();
   }
 
   Future<void> updateAppLimit(String packageName, int limitMs, String appName) async {
     print("[HomeController] --- [SETTING_LIMIT] Saving limit for $appName ($packageName): $limitMs ms ---");
-    final usage = await UsageDataSaver.getCommittedUsage(packageName);
-    final timeLeft = (limitMs - usage).clamp(0, limitMs);
-    await UsageDataSaver.saveLimitConfig(packageName, appName, limitMs, timeLeft);
+    bool isSystemApp = false;
+    Uint8List? icon;
+    try {
+      final app = allApps.firstWhere((app) => app.packageName == packageName);
+      isSystemApp = app.isSystemApp;
+      icon = app.icon;
+    } catch (_) {}
+
+    ActiveAppsManager.updateApp(
+      packageName: packageName,
+      displayName: appName,
+      isSystemApp: isSystemApp ? 1 : 0,
+      todayLimit: limitMs,
+      icon: icon,
+    );
 
     if (limitMs == 0) {
       final prefs = await SharedPreferences.getInstance();
@@ -300,20 +374,30 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       }
     }
 
-    try {
-      final service = FlutterBackgroundService();
-      print("[HomeController] Sending 'limitChanged' signal to background service for $packageName");
-      service.invoke('limitChanged', {'packageName': packageName});
-    } catch (e) {
-      debugPrint('Error invoking limitChanged: $e');
-    }
-
     await loadLauncherData();
   }
 
   Future<void> toggleFavorite(String packageName) async {
+    String displayName = packageName;
+    bool isSystemApp = false;
+    Uint8List? icon;
+    try {
+      final app = allApps.firstWhere((app) => app.packageName == packageName);
+      displayName = app.name;
+      isSystemApp = app.isSystemApp;
+      icon = app.icon;
+    } catch (_) {}
+
     final isFav = await AppDbHelper.instance.isAppFavorite(packageName);
-    await AppDbHelper.instance.updateFavoriteStatus(packageName, !isFav);
+    final newFav = !isFav;
+
+    ActiveAppsManager.updateApp(
+      packageName: packageName,
+      displayName: displayName,
+      isSystemApp: isSystemApp ? 1 : 0,
+      isFavorite: newFav ? 1 : 0,
+      icon: icon,
+    );
     await loadLauncherData();
   }
 }

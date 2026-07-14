@@ -1,11 +1,14 @@
 
 
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:usage_stats/usage_stats.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../localSaver/localSaver.dart';
+import '../localSaver/db_helper.dart';
+import '../localSaver/active_apps_manager.dart';
 
 // ---------------------------------------------------------------------------
 
@@ -124,6 +127,87 @@ void onStart(ServiceInstance service) async {
 
   service.on('stopService').listen((event) {
     service.stopSelf();
+  });
+
+  // Startup पर SQLite से सक्रिय (active) ऐप्स की लिस्ट रैम में लोड करें
+  try {
+    final activeApps = await AppDbHelper.instance.getActiveAppsFromDb();
+    ActiveAppsManager.activeAppsList.clear();
+    ActiveAppsManager.activeAppsList.addAll(activeApps);
+    print("[AppLimitService] Loaded active apps into RAM on service start: ${activeApps.length} apps");
+
+    // UI को ताज़ा लिस्ट सिंक करें
+    final listData = activeApps.map((app) => {
+      'packageName': app.packageName,
+      'displayName': app.displayName,
+      'isSystemApp': app.isSystemApp,
+      'isFavorite': app.isFavorite,
+      'countdown': app.countdown,
+      'todayLimit': app.todayLimit,
+      'todayUsage': app.todayUsage,
+      'lastOpened': app.lastOpened,
+      'icon': app.icon,
+    }).toList();
+    service.invoke('syncFullList', {'apps': listData});
+  } catch (e) {
+    print("[AppLimitService] Error loading active apps on service start: $e");
+  }
+
+  // UI से आने वाली लिस्ट सिंक रिक्वेस्ट का लिसनर
+  service.on('requestActiveAppsSync').listen((event) {
+    print("[AppLimitService] UI requested active apps sync. Sending list...");
+    final listData = ActiveAppsManager.activeAppsList.map((app) => {
+      'packageName': app.packageName,
+      'displayName': app.displayName,
+      'isSystemApp': app.isSystemApp,
+      'isFavorite': app.isFavorite,
+      'countdown': app.countdown,
+      'todayLimit': app.todayLimit,
+      'todayUsage': app.todayUsage,
+      'lastOpened': app.lastOpened,
+      'icon': app.icon,
+    }).toList();
+    service.invoke('syncFullList', {'apps': listData});
+  });
+
+  // UI से आने वाले लाइव बदलावों को रैम लिस्ट में सिंक करने का लिसनर
+  service.on('syncActiveApp').listen((event) {
+    if (event != null) {
+      final pkg = event['packageName'] as String?;
+      if (pkg != null && pkg.isNotEmpty) {
+        final displayName = event['displayName'] as String? ?? '';
+        final isSystemApp = event['isSystemApp'] as int? ?? 0;
+        final isFavorite = event['isFavorite'] as int?;
+        final countdown = event['countdown'] as int?;
+        final todayLimit = event['todayLimit'] as int?;
+        final todayUsage = event['todayUsage'] as int?;
+        final lastOpened = event['lastOpened'] as int?;
+        
+        dynamic iconData = event['icon'];
+        Uint8List? iconBytes;
+        if (iconData != null) {
+          if (iconData is Uint8List) {
+            iconBytes = iconData;
+          } else if (iconData is List) {
+            iconBytes = Uint8List.fromList(List<int>.from(iconData));
+          }
+        }
+
+        print("[AppLimitService] Live syncActiveApp received for $pkg: Favorite: $isFavorite, Limit: $todayLimit, Countdown: $countdown");
+        ActiveAppsManager.updateApp(
+          packageName: pkg,
+          displayName: displayName,
+          isSystemApp: isSystemApp,
+          isFavorite: isFavorite,
+          countdown: countdown,
+          todayLimit: todayLimit,
+          todayUsage: todayUsage,
+          lastOpened: lastOpened,
+          icon: iconBytes,
+          isServiceIsolate: true,
+        );
+      }
+    }
   });
 
   // Limit changed notifications from Settings/Overlay

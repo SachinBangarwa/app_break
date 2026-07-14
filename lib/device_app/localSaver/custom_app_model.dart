@@ -24,10 +24,20 @@ class CustomAppModel {
   });
 
   factory CustomAppModel.fromMap(Map<String, dynamic> map) {
+    dynamic iconData = map['icon'];
+    Uint8List? iconBytes;
+    if (iconData != null) {
+      if (iconData is Uint8List) {
+        iconBytes = iconData;
+      } else if (iconData is List) {
+        iconBytes = Uint8List.fromList(List<int>.from(iconData));
+      }
+    }
+
     return CustomAppModel(
       packageName: map['packageName'] as String? ?? '',
       displayName: map['displayName'] as String? ?? '',
-      icon: map['icon'] as Uint8List?,
+      icon: iconBytes,
       isSystemApp: map['isSystemApp'] as int? ?? 0,
       isFavorite: map['isFavorite'] as int? ?? 0,
       countdown: map['countdown'] as int? ?? 0,
@@ -35,5 +45,10 @@ class CustomAppModel {
       todayLimit: map['todayLimit'] as int? ?? 0,
       todayUsage: map['todayUsage'] as int? ?? 0,
     );
+  }
+
+  @override
+  String toString() {
+    return 'CustomAppModel(packageName: $packageName, displayName: $displayName, hasIcon: ${icon != null}, isSystemApp: $isSystemApp, isFavorite: $isFavorite, countdown: $countdown, lastOpened: $lastOpened, todayLimit: $todayLimit, todayUsage: $todayUsage)';
   }
 }

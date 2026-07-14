@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:installed_apps/installed_apps.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
+import 'package:testproject/device_app/localSaver/active_apps_manager.dart';
 
 class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   final allApps = <AppInfo>[].obs;
@@ -306,27 +308,44 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> updateDelayConfig(String packageName, bool enabled, int seconds) async {
-    await UsageDataSaver.saveDelayEnabled(packageName, enabled);
-    await UsageDataSaver.saveDelaySeconds(packageName, seconds);
-
-    // Send notification signal to the background service
+    String displayName = packageName;
+    bool isSystemApp = false;
+    Uint8List? icon;
     try {
-      final service = FlutterBackgroundService();
-      service.invoke('limitChanged', {'packageName': packageName});
-    } catch (e) {
-      debugPrint('Error invoking limitChanged: $e');
-    }
+      final app = allApps.firstWhere((app) => app.packageName == packageName);
+      displayName = app.name;
+      isSystemApp = app.isSystemApp;
+      icon = app.icon;
+    } catch (_) {}
+
+    ActiveAppsManager.updateApp(
+      packageName: packageName,
+      displayName: displayName,
+      isSystemApp: isSystemApp ? 1 : 0,
+      countdown: enabled ? seconds : 0,
+      icon: icon,
+    );
 
     await checkServiceAndPermissions();
   }
 
   Future<void> updateLimit(String packageName, int selectedMinutes, String appName) async {
     final limitMs = selectedMinutes * 60000;
-    
-    // Save configurations correctly and calculate remaining timeLeft
-    final usage = await UsageDataSaver.getCommittedUsage(packageName);
-    final timeLeft = (limitMs - usage).clamp(0, limitMs);
-    await UsageDataSaver.saveLimitConfig(packageName, appName, limitMs, timeLeft);
+    bool isSystemApp = false;
+    Uint8List? icon;
+    try {
+      final app = allApps.firstWhere((app) => app.packageName == packageName);
+      isSystemApp = app.isSystemApp;
+      icon = app.icon;
+    } catch (_) {}
+
+    ActiveAppsManager.updateApp(
+      packageName: packageName,
+      displayName: appName,
+      isSystemApp: isSystemApp ? 1 : 0,
+      todayLimit: limitMs,
+      icon: icon,
+    );
 
     if (limitMs == 0) {
       final prefs = await SharedPreferences.getInstance();
@@ -334,15 +353,6 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       if (blockedPkg == packageName) {
         await prefs.remove(UsageDataSaver.activeBlockedPackage);
       }
-    }
-
-    // Send notification signal to the background service
-    try {
-      final service = FlutterBackgroundService();
-      print("[DeviceAppsController] Sending limitChanged for $packageName");
-      service.invoke('limitChanged', {'packageName': packageName});
-    } catch (e) {
-      debugPrint('Error invoking limitChanged: $e');
     }
     
     await checkServiceAndPermissions();

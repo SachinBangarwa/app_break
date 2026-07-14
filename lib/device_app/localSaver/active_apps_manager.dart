@@ -21,6 +21,7 @@ class ActiveAppsManager {
     int? todayLimit,
     int? todayUsage,
     int? lastOpened,
+    bool isServiceIsolate = false,
   }) {
     int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
 
@@ -41,8 +42,10 @@ class ActiveAppsManager {
 
       // यदि अपडेट के बाद कोई भी पैरामीटर सक्रिय नहीं बचता, तो इसे लिस्ट से हटा देंगे
       if (updated.isFavorite == 0 && updated.countdown == 0 && updated.todayLimit == 0) {
+        print("[ActiveAppsManager] REMOVED app from memory list: $packageName (All parameters became 0/inactive)");
         activeAppsList.removeAt(index);
       } else {
+        print("[ActiveAppsManager] UPDATED app in memory list: $packageName -> Favorite: ${updated.isFavorite}, Countdown: ${updated.countdown}s, Limit: ${updated.todayLimit}ms");
         activeAppsList[index] = updated;
       }
     } else {
@@ -52,6 +55,7 @@ class ActiveAppsManager {
                        (todayLimit != null && todayLimit > 0);
 
       if (shouldAdd) {
+        print("[ActiveAppsManager] ADDED new app to memory list: $packageName -> Favorite: ${isFavorite ?? 0}, Countdown: ${countdown ?? 0}s, Limit: ${todayLimit ?? 0}ms");
         activeAppsList.add(
           CustomAppModel(
             packageName: packageName,
@@ -68,30 +72,39 @@ class ActiveAppsManager {
       }
     }
 
+    // प्रिंट करें कि अभी रैम लिस्ट में कौन-कौन सी एक्टिव ऐप्स हैं
+    print("[ActiveAppsManager] Current Active Apps in RAM: $activeAppsList");
+
     // =========================================================================
     // BACKGROUND UPDATES (डेटाबेस और स्टोरेज का काम पीछे बैकग्राउंड में चलेगा)
     // =========================================================================
     
-    // 1. अगर Favorite स्टेटस अपडेट किया गया है
-    if (isFavorite != null) {
-      AppDbHelper.instance.updateFavoriteStatus(packageName, isFavorite == 1);
-    }
+    // सर्विस आइसोलेट के अंदर बैकग्राउंड अपडेट (DB लिखना और लूप्स चलाना) छोड़ देंगे क्योंकि वह पहले ही UI थ्रेड से किया जा चुका है।
+    if (!isServiceIsolate) {
+      // 1. अगर Favorite स्टेटस अपडेट किया गया है
+      if (isFavorite != null) {
+        print("[ActiveAppsManager] DATABASE UPDATE: Saving Favorite status = $isFavorite for $packageName in background");
+        AppDbHelper.instance.updateFavoriteStatus(packageName, isFavorite == 1);
+        _notifyLimitChanged(packageName);
+      }
 
-    // 2. अगर Countdown Delay अपडेट किया गया है
-    if (countdown != null) {
-      AppDbHelper.instance.updateAppCountdown(packageName, countdown);
-      _notifyLimitChanged(packageName);
-    }
+      // 2. अगर Countdown Delay अपडेट किया गया है
+      if (countdown != null) {
+        print("[ActiveAppsManager] DATABASE UPDATE: Saving Countdown Delay = ${countdown}s for $packageName in background");
+        AppDbHelper.instance.updateAppCountdown(packageName, countdown);
+        _notifyLimitChanged(packageName);
+      }
 
-    // 3. अगर Limit अपडेट की गई है
-    if (todayLimit != null) {
-      _updateLimitAndFetchUsageBackground(
-        packageName: packageName,
-        displayName: displayName,
-        isSystemApp: isSystemApp,
-        icon: icon,
-        limitMs: todayLimit,
-      );
+      // 3. अगर Limit अपडेट की गई है
+      if (todayLimit != null) {
+        _updateLimitAndFetchUsageBackground(
+          packageName: packageName,
+          displayName: displayName,
+          isSystemApp: isSystemApp,
+          icon: icon,
+          limitMs: todayLimit,
+        );
+      }
     }
   }
 
@@ -108,12 +121,15 @@ class ActiveAppsManager {
     required int limitMs,
   }) async {
     // A. सिस्टम से आज का लाइव उपयोग (todayUsage) निकालें
+    print("[ActiveAppsManager] Fetching live system usage for $packageName...");
     final usageMs = await calculateTodaySystemUsage(packageName);
+    print("[ActiveAppsManager] Live system usage for $packageName fetched: ${usageMs / 1000} seconds");
 
     // B. रैम (इन-मेमोरी) लिस्ट को दोबारा अपडेटेड यूसेज के साथ रिफ्रेश करें
     int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
     if (index != -1) {
       var existing = activeAppsList[index];
+      print("[ActiveAppsManager] UPDATING usage in memory list for $packageName to ${usageMs}ms");
       activeAppsList[index] = CustomAppModel(
         packageName: packageName,
         displayName: displayName,
@@ -128,6 +144,7 @@ class ActiveAppsManager {
     }
 
     // C. SQLite डेटाबेस में लिमिट और यूसेज दोनों सेव करें
+    print("[ActiveAppsManager] DATABASE UPDATE: Saving todayLimit = ${limitMs}ms and todayUsage = ${usageMs}ms for $packageName in background");
     await AppDbHelper.instance.updateAppLimit(packageName, limitMs, usageMs);
 
     // D. बैकग्राउंड सर्विस को नोटिफ़ाई करें
@@ -139,7 +156,40 @@ class ActiveAppsManager {
     try {
       final service = FlutterBackgroundService();
       service.invoke('limitChanged', {'packageName': packageName});
-    } catch (_) {}
+
+      // UI की लिस्ट की स्थिति को बैकग्राउंड सर्विस की लिस्ट के साथ सिंक करें
+      int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
+      if (index != -1) {
+        final app = activeAppsList[index];
+        print("[ActiveAppsManager] Sending syncActiveApp to background service for ${app.packageName} (Favorite: ${app.isFavorite}, Limit: ${app.todayLimit}ms, Countdown: ${app.countdown}s)");
+        service.invoke('syncActiveApp', {
+          'packageName': app.packageName,
+          'displayName': app.displayName,
+          'isSystemApp': app.isSystemApp,
+          'isFavorite': app.isFavorite,
+          'countdown': app.countdown,
+          'todayLimit': app.todayLimit,
+          'todayUsage': app.todayUsage,
+          'lastOpened': app.lastOpened,
+          'icon': app.icon,
+        });
+      } else {
+        // अगर रैम लिस्ट में नहीं है, तो सर्विस को बताएं कि इसके सभी वैल्यूज़ 0/inactive हैं (ताकि सर्विस भी इसे अपनी लिस्ट से हटा दे)
+        print("[ActiveAppsManager] Sending syncActiveApp (REMOVE/RESET) to background service for $packageName");
+        service.invoke('syncActiveApp', {
+          'packageName': packageName,
+          'displayName': '',
+          'isSystemApp': 0,
+          'isFavorite': 0,
+          'countdown': 0,
+          'todayLimit': 0,
+          'todayUsage': 0,
+          'lastOpened': 0,
+        });
+      }
+    } catch (e) {
+      print("[ActiveAppsManager] Error syncing active app to background service: $e");
+    }
   }
 
   // सिस्टम से आज का लाइव यूसेज निकालने का हेल्पर
