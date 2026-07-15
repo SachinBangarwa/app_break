@@ -218,23 +218,19 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       desktopApps.assignAll(tempDesktopApps);
       isLoading.value = false;
 
-      // 3. Fetch limits & delay configs from SharedPreferences in the background
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
+      // 3. Fetch limits & delay configs from memory activeAppsList
       Map<String, int> tempLimitsMap = {};
       Map<String, bool> tempDelayEnabledMap = {};
       Map<String, int> tempDelaySecondsMap = {};
 
-      for (var app in apps) {
-        final limit = prefs.getInt('limit_${app.packageName}') ?? 0;
-        if (limit > 0) {
-          tempLimitsMap[app.packageName] = limit;
+      for (var app in ActiveAppsManager.activeAppsList) {
+        if (app.todayLimit > 0) {
+          tempLimitsMap[app.packageName] = app.todayLimit;
         }
-
-        final delayEnabled = prefs.getBool('delay_enabled_${app.packageName}') ?? false;
-        final delaySecs = prefs.getInt('delay_seconds_${app.packageName}') ?? 10;
-        tempDelayEnabledMap[app.packageName] = delayEnabled;
-        tempDelaySecondsMap[app.packageName] = delaySecs;
+        if (app.countdown > 0) {
+          tempDelayEnabledMap[app.packageName] = true;
+          tempDelaySecondsMap[app.packageName] = app.countdown;
+        }
       }
 
       limitsMap.assignAll(tempLimitsMap);
@@ -265,8 +261,20 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
     final prefs = await SharedPreferences.getInstance();
     final isAccessibilityEnabled = prefs.getBool('is_accessibility_enabled') ?? false;
-    final delayEnabled = prefs.getBool('delay_enabled_$packageName') ?? false;
-    final delaySeconds = prefs.getInt('delay_seconds_$packageName') ?? 10;
+
+    CustomAppModel? ramApp;
+    for (final a in ActiveAppsManager.activeAppsList) {
+      if (a.packageName == packageName) {
+        ramApp = a;
+        break;
+      }
+    }
+    final limitMs = ramApp?.todayLimit ?? 0;
+    final todayUsageMs = ramApp?.todayUsage ?? 0;
+    final isBlocked = limitMs > 0 && todayUsageMs >= limitMs;
+
+    final delayEnabled = ramApp != null && ramApp.countdown > 0;
+    final delaySeconds = ramApp != null && ramApp.countdown > 0 ? ramApp.countdown : 10;
 
     if (isAccessibilityEnabled) {
       try {
@@ -280,10 +288,8 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         );
       }
     } else {
-      if (delayEnabled) {
+      if (delayEnabled && !isBlocked) {
         try {
-          await prefs.setString('active_overlay_type', 'restrict');
-          await prefs.setString('active_restrict_package', packageName);
           await prefs.setString('launch_on_dismiss_package', packageName);
 
           await FlutterOverlayWindow.showOverlay(

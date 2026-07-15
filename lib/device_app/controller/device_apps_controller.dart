@@ -13,6 +13,8 @@ import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/device_app/localSaver/active_apps_manager.dart';
 
+import '../localSaver/custom_app_model.dart';
+
 class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   final allApps = <AppInfo>[].obs;
   final usageMap = <String, int>{}.obs;
@@ -60,22 +62,18 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       final hasOverlay = await FlutterOverlayWindow.isPermissionGranted();
       final isRunning = await FlutterBackgroundService().isRunning();
       
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
       Map<String, int> tempLimitsMap = {};
       Map<String, bool> tempDelayEnabledMap = {};
       Map<String, int> tempDelaySecondsMap = {};
 
-      for (var app in allApps) {
-        final limit = prefs.getInt('limit_${app.packageName}') ?? 0;
-        if (limit > 0) {
-          tempLimitsMap[app.packageName] = limit;
+      for (var app in ActiveAppsManager.activeAppsList) {
+        if (app.todayLimit > 0) {
+          tempLimitsMap[app.packageName] = app.todayLimit;
         }
-
-        final delayEnabled = prefs.getBool('delay_enabled_${app.packageName}') ?? false;
-        final delaySecs = prefs.getInt('delay_seconds_${app.packageName}') ?? 10;
-        tempDelayEnabledMap[app.packageName] = delayEnabled;
-        tempDelaySecondsMap[app.packageName] = delaySecs;
+        if (app.countdown > 0) {
+          tempDelayEnabledMap[app.packageName] = true;
+          tempDelaySecondsMap[app.packageName] = app.countdown;
+        }
       }
       
       hasOverlayPermission.value = hasOverlay;
@@ -246,8 +244,19 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final isAccessibilityEnabled = prefs.getBool('is_accessibility_enabled') ?? false;
 
-    final delayEnabled = prefs.getBool('delay_enabled_$packageName') ?? false;
-    final delaySeconds = prefs.getInt('delay_seconds_$packageName') ?? 10;
+    CustomAppModel? ramApp;
+    for (final a in ActiveAppsManager.activeAppsList) {
+      if (a.packageName == packageName) {
+        ramApp = a;
+        break;
+      }
+    }
+    final limitMs = ramApp?.todayLimit ?? 0;
+    final todayUsageMs = ramApp?.todayUsage ?? 0;
+    final isBlocked = limitMs > 0 && todayUsageMs >= limitMs;
+
+    final delayEnabled = ramApp != null && ramApp.countdown > 0;
+    final delaySeconds = ramApp != null && ramApp.countdown > 0 ? ramApp.countdown : 10;
 
     if (isAccessibilityEnabled) {
       try {
@@ -261,10 +270,8 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
         );
       }
     } else {
-      if (delayEnabled) {
+      if (delayEnabled && !isBlocked) {
         try {
-          await prefs.setString('active_overlay_type', 'restrict');
-          await prefs.setString('active_restrict_package', packageName);
           await prefs.setString('launch_on_dismiss_package', packageName);
 
           await FlutterOverlayWindow.showOverlay(

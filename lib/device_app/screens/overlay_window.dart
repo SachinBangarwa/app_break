@@ -2,20 +2,22 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:installed_apps/installed_apps.dart';
-import '../localSaver/localSaver.dart';
 class OverlayWindow extends StatefulWidget {
   final String initialPackageName;
   final String initialAppName;
   final int initialLimitMinutes;
+  final int initialLimitMs;
+  final int initialTodayUsageMs;
 
   const OverlayWindow({
     super.key,
     this.initialPackageName = "",
     this.initialAppName = "This application",
     this.initialLimitMinutes = 0,
+    this.initialLimitMs = 0,
+    this.initialTodayUsageMs = 0,
   });
 
   @override
@@ -27,13 +29,22 @@ class _OverlayWindowState extends State<OverlayWindow> {
   int _currentLimitMinutes = 0;
   bool _isExtending = false;
 
+  int _limitMs = 0;
+  int _todayUsageMs = 0;
+
   @override
   void initState() {
     super.initState();
     _packageName = widget.initialPackageName;
     _appName = widget.initialAppName;
     _currentLimitMinutes = widget.initialLimitMinutes;
-    _loadOverlayData();
+    _limitMs = widget.initialLimitMs > 0 ? widget.initialLimitMs : (widget.initialLimitMinutes * 60000);
+    _todayUsageMs = widget.initialTodayUsageMs;
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   @override
@@ -41,32 +52,18 @@ class _OverlayWindowState extends State<OverlayWindow> {
     super.didUpdateWidget(oldWidget);
     if (widget.initialPackageName != oldWidget.initialPackageName ||
         widget.initialAppName != oldWidget.initialAppName ||
-        widget.initialLimitMinutes != oldWidget.initialLimitMinutes) {
+        widget.initialLimitMinutes != oldWidget.initialLimitMinutes ||
+        widget.initialLimitMs != oldWidget.initialLimitMs ||
+        widget.initialTodayUsageMs != oldWidget.initialTodayUsageMs) {
       setState(() {
         _packageName = widget.initialPackageName;
         _appName = widget.initialAppName;
         _currentLimitMinutes = widget.initialLimitMinutes;
+        _limitMs = widget.initialLimitMs > 0 ? widget.initialLimitMs : (widget.initialLimitMinutes * 60000);
+        _todayUsageMs = widget.initialTodayUsageMs;
         _isExtending = false;
       });
     }
-  }
-
-  Future<void> _loadOverlayData() async {
-    await UsageDataSaver.reload();
-    final activePackage = _packageName.isNotEmpty 
-        ? _packageName 
-        : (await UsageDataSaver.getActiveBlockedPackage() ?? '');
-    final activeName = await UsageDataSaver.getAppName(activePackage);
-    final limitMs = await UsageDataSaver.getLimit(activePackage);
-
-    setState(() {
-      _packageName = activePackage;
-      if (activeName.isNotEmpty && activeName != activePackage) {
-        _appName = activeName;
-      }
-      _currentLimitMinutes = (limitMs / 60000).round();
-      _isExtending = false; // Safe fallback reset
-    });
   }
 
   Future<void> _extendLimit() async {
@@ -80,50 +77,20 @@ class _OverlayWindowState extends State<OverlayWindow> {
     });
 
     try {
-      await UsageDataSaver.reload();
-
-      final currentLimitMs = await UsageDataSaver.getLimit(_packageName);
-      final todayUsageMs = await UsageDataSaver.getUsage(_packageName);
-
-      final baseMs = currentLimitMs > todayUsageMs ? currentLimitMs : todayUsageMs;
+      final baseMs = _limitMs > _todayUsageMs ? _limitMs : _todayUsageMs;
       final newLimitMs = baseMs + (2 * 60000);
 
-      // 1. New limit सेव करें
-      final limitSaved = await UsageDataSaver.saveLimit(_packageName, newLimitMs);
+      // Invoke event in background service to update DB and RAM list
+      final service = FlutterBackgroundService();
+      service.invoke('extendLimit', {
+        'packageName': _packageName,
+        'newLimitMs': newLimitMs,
+      });
 
-      // Increment timeLeft by 2 minutes (snooze period)
-      final currentLeft = await UsageDataSaver.getTimeLeft(_packageName);
-      await UsageDataSaver.saveTimeLeft(_packageName, currentLeft + (2 * 60000));
-
-      // 2. Snooze timestamp सेट करें (2 minutes from now)
-      final snoozeUntil = DateTime.now()
-          .add(const Duration(minutes: 2))
-          .millisecondsSinceEpoch;
-      final snoozeSaved = await UsageDataSaver.saveSnoozeUntil(_packageName, snoozeUntil);
-
-      // 3. Blocked marker हटाएं
-      if (limitSaved && snoozeSaved) {
-        SharedPreferences preferences = await SharedPreferences.getInstance();
-        await preferences.setString('active_foreground_package', _packageName);
-        await preferences.remove(UsageDataSaver.activeBlockedPackage);
-
-        try {
-          final service = FlutterBackgroundService();
-          service.invoke('limitChanged', {
-            'packageName': _packageName,
-            'snoozeUntil': snoozeUntil,
-            'newLimitMs': newLimitMs,
-          });
-        } catch (e) {
-          debugPrint('Error invoking limitChanged: $e');
-        }
-
-        await Future.delayed(const Duration(milliseconds: 300));
-      }
+      await Future.delayed(const Duration(milliseconds: 300));
     } catch (e) {
       debugPrint("Error extending limit: $e");
     } finally {
-      // FIX 2: क्लोज करने से पहले स्टेट को false करें ताकि अगली बार लोडर न दिखे
       if (mounted) {
         setState(() {
           _isExtending = false;
@@ -132,116 +99,7 @@ class _OverlayWindowState extends State<OverlayWindow> {
       await FlutterOverlayWindow.closeOverlay();
     }
   }
-// import 'dart:async';
-// import 'package:flutter/material.dart';
-// import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-// import 'package:shared_preferences/shared_preferences.dart';
-//
-// class OverlayWindow extends StatefulWidget {
-//   const OverlayWindow({super.key});
-//
-//   @override
-//   State<OverlayWindow> createState() => _OverlayWindowState();
-// }
-//
-// class _OverlayWindowState extends State<OverlayWindow> {
-//   String _appName = "This application";
-//   String _packageName = "";
-//   int _currentLimitMinutes = 0;
-//   bool _isExtending = false; // prevent double-taps while write is in-flight
-//   StreamSubscription? _dataSubscription;
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     // Fallback: read from SharedPreferences immediately so something
-//     // sensible shows even before real-time data arrives.
-//     _loadOverlayData();
-//
-//     // NEW: Primary source of truth — the background service pushes the
-//     // correct blocked-app info directly here via shareData(), right after
-//     // showOverlay(). This avoids the SharedPreferences race that caused a
-//     // stale app name (e.g. leftover "ChatGPT") to show for a different
-//     // app's block.
-//     _dataSubscription = FlutterOverlayWindow.overlayListener.listen((event) {
-//       if (event is Map) {
-//         final pkg = event['packageName'] as String?;
-//         final name = event['appName'] as String?;
-//         final limitMin = event['limitMinutes'] as int?;
-//         if (pkg != null && pkg.isNotEmpty) {
-//           setState(() {
-//             _packageName = pkg;
-//             _appName = name ?? pkg;
-//             if (limitMin != null) _currentLimitMinutes = limitMin;
-//           });
-//         }
-//       }
-//     });
-//   }
-//
-//   @override
-//   void dispose() {
-//     _dataSubscription?.cancel();
-//     super.dispose();
-//   }
-//
-//   Future<void> _loadOverlayData() async {
-//     final prefs = await SharedPreferences.getInstance();
-//     await prefs.reload();
-//     final activePackage = prefs.getString('active_blocked_package') ?? '';
-//     final activeName = prefs.getString('active_blocked_name') ?? 'This application';
-//     final limitMs = prefs.getInt('limit_$activePackage') ?? 0;
-//
-//     setState(() {
-//       _packageName = activePackage;
-//       _appName = activeName;
-//       _currentLimitMinutes = (limitMs / 60000).round();
-//     });
-//   }
-//
-//   Future<void> _extendLimit() async {
-//     if (_packageName.isEmpty || _isExtending) {
-//       await FlutterOverlayWindow.closeOverlay();
-//       return;
-//     }
-//
-//     setState(() {
-//       _isExtending = true;
-//     });
-//
-//     try {
-//       final prefs = await SharedPreferences.getInstance();
-//       await prefs.reload();
-//
-//       final currentLimitMs = prefs.getInt('limit_$_packageName') ?? 0;
-//       final newLimitMs = currentLimitMs + (2 * 60000);
-//
-//       // 1. Persist the new limit and WAIT for confirmation it was written.
-//       final limitSaved = await prefs.setInt('limit_$_packageName', newLimitMs);
-//
-//       // 2. Also set a time-based snooze as a safety net. Even if the
-//       //    background service's usage math is briefly stale, it will not
-//       //    re-trigger the overlay for this package until the snooze passes.
-//       final snoozeUntil = DateTime.now()
-//           .add(const Duration(minutes: 2))
-//           .millisecondsSinceEpoch;
-//       final snoozeSaved =
-//       await prefs.setInt('snooze_until_$_packageName', snoozeUntil);
-//
-//       // 3. Clear the "currently blocked" marker only after the writes above
-//       //    are confirmed, so the background service never reads a
-//       //    half-updated state.
-//       if (limitSaved && snoozeSaved) {
-//         await prefs.remove('active_blocked_package');
-//         // Small settle delay: SharedPreferences commits are async under the
-//         // hood; this gives the platform channel time to flush before the
-//         // background service's next poll (every 4s) reads it.
-//         await Future.delayed(const Duration(milliseconds: 300));
-//       }
-//     } finally {
-//       await FlutterOverlayWindow.closeOverlay();
-//     }
-//   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -310,10 +168,6 @@ class _OverlayWindowState extends State<OverlayWindow> {
                           : () async {
                         if (_packageName.isNotEmpty) {
                           try {
-                            SharedPreferences preferences = await SharedPreferences.getInstance();
-                            await preferences.remove(UsageDataSaver.activeBlockedPackage);
-                            await preferences.remove('last_restricted_package');
-                            await preferences.remove('last_restricted_time');
                             try {
                               final service = FlutterBackgroundService();
                               service.invoke('limitChanged', {

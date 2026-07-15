@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../localSaver/localSaver.dart';
 
 class AppRestrictOverlay extends StatefulWidget {
   final String initialPackageName;
@@ -47,19 +46,14 @@ class _AppRestrictOverlayState extends State<AppRestrictOverlay> {
   }
 
   Future<void> _loadOverlayData() async {
-    await UsageDataSaver.reload();
     final prefs = await SharedPreferences.getInstance();
-    final activePackage = prefs.getString('active_restrict_package') ?? '';
-    final activeName = await UsageDataSaver.getAppName(activePackage);
     final launchPkg = prefs.getString('launch_on_dismiss_package') ?? '';
-    final delaySeconds = prefs.getInt('delay_seconds_$activePackage') ?? widget.initialDelaySeconds;
+    final delaySeconds = widget.initialDelaySeconds;
 
     setState(() {
       _launchOnDismissPackage = launchPkg;
       _secondsRemaining = delaySeconds;
-      if (activeName.isNotEmpty && activeName != activePackage) {
-        _appName = activeName;
-      }
+      _appName = widget.initialAppName;
     });
   }
 

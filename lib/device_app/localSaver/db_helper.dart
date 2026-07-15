@@ -364,4 +364,21 @@ class AppDbHelper {
       return [];
     }
   }
+
+  /// Retrieves a single app by packageName.
+  Future<CustomAppModel?> getApp(String packageName) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'installed_apps',
+        where: 'packageName = ?',
+        whereArgs: [packageName],
+      );
+      if (maps.isEmpty) return null;
+      return CustomAppModel.fromMap(maps.first);
+    } catch (e) {
+      debugPrint("Error fetching app $packageName from db: $e");
+      return null;
+    }
+  }
 }
