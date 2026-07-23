@@ -46,6 +46,27 @@ class BaselineResult {
   BaselineResult(this.todayUsageMs, this.isForeground, this.lastForegroundTime);
 }
 
+
+/// today usage
+Future<int> getTodayUsageForPackage(String packageName) async {
+  if (packageName.isEmpty) return 0;
+
+  final now = DateTime.now();
+  final startOfDay = DateTime(now.year, now.month, now.day);
+
+  try {
+    Map<String, UsageInfo> aggregatedStats = await UsageStats.queryAndAggregateUsageStats(startOfDay, now);
+
+    if (aggregatedStats.containsKey(packageName)) {
+      final totalTimeStr = aggregatedStats[packageName]?.totalTimeInForeground ?? '0';
+      return int.tryParse(totalTimeStr) ?? 0;
+    }
+  } catch (e) {
+    print("Error getting usage: $e");
+  }
+
+  return 0;
+}
 Future<BaselineResult> calculatePollingBaseline(String pkg) async {
   final now = DateTime.now().millisecondsSinceEpoch;
   final startOfDay = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);

@@ -3,10 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../localSaver/localSaver.dart';
+import 'package:testproject/device_app/service/usage_helper.dart';
 import '../localSaver/db_helper.dart';
 import '../localSaver/active_apps_manager.dart';
 import '../localSaver/custom_app_model.dart';
+import '../localSaver/localSaver.dart';
 import 'limit_monitor.dart';
 
 class AppLimitService {
@@ -48,16 +49,31 @@ void onStart(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  // Load active apps into memory at start from SQLite DB
   try {
     final activeApps = await AppDbHelper.instance.getActiveAppsFromDb();
     ActiveAppsManager.activeAppsList.clear();
     ActiveAppsManager.activeAppsList.addAll(activeApps);
     print("[AppLimitService] Loaded active apps into RAM on service start: ${activeApps.length} apps");
 
+    // Sync today usage from OS for apps that have limits configured
+    for (final app in activeApps) {
+      if (app.todayLimit > 0) {
+        final todayUsageMs = await getTodayUsageForPackage(app.packageName);
+        
+        ActiveAppsManager.updateApp(
+          packageName: app.packageName,
+          displayName: app.displayName,
+          isSystemApp: app.isSystemApp,
+          todayUsage: todayUsageMs,
+          isServiceIsolate: true,
+        );
 
+        await AppDbHelper.instance.updateAppUsage(app.packageName, todayUsageMs);
+        print("[AppLimitService] Synced OS usage for ${app.packageName} on service restart: ${todayUsageMs / 1000}s");
+      }
+    }
 
-    final listData = activeApps.map((app) => {
+    final listData = ActiveAppsManager.activeAppsList.map((app) => {
       'packageName': app.packageName,
       'displayName': app.displayName,
       'isSystemApp': app.isSystemApp,

@@ -7,10 +7,8 @@ import 'custom_app_model.dart';
 import 'db_helper.dart';
 
 class ActiveAppsManager {
-  // इन-मेमोरी रिएक्टिव लिस्ट (GetX RxList) जिसे ऐप में कहीं भी एक्सेस किया जा सकता है
   static final RxList<CustomAppModel> activeAppsList = <CustomAppModel>[].obs;
 
-  // ऐप के पैरामीटर्स बदलने पर लिस्ट को मेमोरी में ही अपडेट/ऐड/डिलीट करने का फ़ंक्शन
   static void updateApp({
     required String packageName,
     required String displayName,
@@ -26,7 +24,6 @@ class ActiveAppsManager {
     int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
 
     if (index != -1) {
-      // यदि ऐप पहले से लिस्ट में मौजूद है
       var existing = activeAppsList[index];
       var updated = CustomAppModel(
         packageName: packageName,
@@ -40,7 +37,6 @@ class ActiveAppsManager {
         lastOpened: lastOpened ?? existing.lastOpened,
       );
 
-      // यदि अपडेट के बाद कोई भी पैरामीटर सक्रिय नहीं बचता, तो इसे लिस्ट से हटा देंगे
       if (updated.isFavorite == 0 && updated.countdown == 0 && updated.todayLimit == 0) {
         print("[ActiveAppsManager] REMOVED app from memory list: $packageName (All parameters became 0/inactive)");
         activeAppsList.removeAt(index);
@@ -49,8 +45,7 @@ class ActiveAppsManager {
         activeAppsList[index] = updated;
       }
     } else {
-      // यदि ऐप लिस्ट में नहीं है, तो चेक करेंगे कि क्या कोई पैरामीटर सक्रिय है
-      bool shouldAdd = (isFavorite == 1) || 
+      bool shouldAdd = (isFavorite == 1) ||
                        (countdown != null && countdown > 0) || 
                        (todayLimit != null && todayLimit > 0);
 
@@ -72,30 +67,22 @@ class ActiveAppsManager {
       }
     }
 
-    // प्रिंट करें कि अभी रैम लिस्ट में कौन-कौन सी एक्टिव ऐप्स हैं
     print("[ActiveAppsManager] Current Active Apps in RAM: $activeAppsList");
 
-    // =========================================================================
-    // BACKGROUND UPDATES (डेटाबेस और स्टोरेज का काम पीछे बैकग्राउंड में चलेगा)
-    // =========================================================================
-    
-    // सर्विस आइसोलेट के अंदर बैकग्राउंड अपडेट (DB लिखना और लूप्स चलाना) छोड़ देंगे क्योंकि वह पहले ही UI थ्रेड से किया जा चुका है।
+
     if (!isServiceIsolate) {
-      // 1. अगर Favorite स्टेटस अपडेट किया गया है
       if (isFavorite != null) {
         print("[ActiveAppsManager] DATABASE UPDATE: Saving Favorite status = $isFavorite for $packageName in background");
         AppDbHelper.instance.updateFavoriteStatus(packageName, isFavorite == 1);
         _notifyLimitChanged(packageName);
       }
 
-      // 2. अगर Countdown Delay अपडेट किया गया है
       if (countdown != null) {
         print("[ActiveAppsManager] DATABASE UPDATE: Saving Countdown Delay = ${countdown}s for $packageName in background");
         AppDbHelper.instance.updateAppCountdown(packageName, countdown);
         _notifyLimitChanged(packageName);
       }
 
-      // 3. अगर Limit अपडेट की गई है
       if (todayLimit != null) {
         _updateLimitAndFetchUsageBackground(
           packageName: packageName,
@@ -112,7 +99,7 @@ class ActiveAppsManager {
   // BACKEND/DATABASE HELPER METHODS
   // =========================================================================
 
-  // पीछे बैकग्राउंड में आज का यूसेज निकालकर लिस्ट और डेटाबेस दोनों जगह अपडेट करने का लॉजिक
+
   static void _updateLimitAndFetchUsageBackground({
     required String packageName,
     required String displayName,
@@ -120,12 +107,10 @@ class ActiveAppsManager {
     Uint8List? icon,
     required int limitMs,
   }) async {
-    // A. सिस्टम से आज का लाइव उपयोग (todayUsage) निकालें
     print("[ActiveAppsManager] Fetching live system usage for $packageName...");
     final usageMs = await calculateTodaySystemUsage(packageName);
     print("[ActiveAppsManager] Live system usage for $packageName fetched: ${usageMs / 1000} seconds");
 
-    // B. रैम (इन-मेमोरी) लिस्ट को दोबारा अपडेटेड यूसेज के साथ रिफ्रेश करें
     int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
     if (index != -1) {
       var existing = activeAppsList[index];
@@ -143,21 +128,17 @@ class ActiveAppsManager {
       );
     }
 
-    // C. SQLite डेटाबेस में लिमिट और यूसेज दोनों सेव करें
     print("[ActiveAppsManager] DATABASE UPDATE: Saving todayLimit = ${limitMs}ms and todayUsage = ${usageMs}ms for $packageName in background");
     await AppDbHelper.instance.updateAppLimit(packageName, limitMs, usageMs);
 
-    // D. बैकग्राउंड सर्विस को नोटिफ़ाई करें
     _notifyLimitChanged(packageName);
   }
 
-  // बैकग्राउंड सर्विस को लिमिट चेंज के बारे में नोटिफ़ाई करने का हेल्पर
   static void _notifyLimitChanged(String packageName) {
     try {
       final service = FlutterBackgroundService();
       service.invoke('limitChanged', {'packageName': packageName});
 
-      // UI की लिस्ट की स्थिति को बैकग्राउंड सर्विस की लिस्ट के साथ सिंक करें
       int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
       if (index != -1) {
         final app = activeAppsList[index];
@@ -174,7 +155,6 @@ class ActiveAppsManager {
           'icon': app.icon,
         });
       } else {
-        // अगर रैम लिस्ट में नहीं है, तो सर्विस को बताएं कि इसके सभी वैल्यूज़ 0/inactive हैं (ताकि सर्विस भी इसे अपनी लिस्ट से हटा दे)
         print("[ActiveAppsManager] Sending syncActiveApp (REMOVE/RESET) to background service for $packageName");
         service.invoke('syncActiveApp', {
           'packageName': packageName,
@@ -192,7 +172,6 @@ class ActiveAppsManager {
     }
   }
 
-  // सिस्टम से आज का लाइव यूसेज निकालने का हेल्पर
   static Future<int> calculateTodaySystemUsage(String packageName) async {
     try {
       final now = DateTime.now();
