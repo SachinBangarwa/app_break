@@ -1,5 +1,4 @@
 import 'package:usage_stats/usage_stats.dart';
-import '../localSaver/localSaver.dart';
 
 // Event type codes returned by usage_stats (Android UsageEvents constants).
 const String eventForeground = '1';
@@ -68,7 +67,6 @@ Future<int> getTodayUsageForPackage(String packageName) async {
   return 0;
 }
 Future<BaselineResult> calculatePollingBaseline(String pkg) async {
-  final now = DateTime.now().millisecondsSinceEpoch;
   final startOfDay = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
   final todayUsageMs = await calculateSystemUsageForPackage(pkg);
 

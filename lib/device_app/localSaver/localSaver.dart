@@ -15,6 +15,7 @@ class UsageDataSaver {
   static String activeBlockedPackage = 'active_blocked_package';
   static String activeBlockedName = 'active_blocked_name';
   static String notificationSaverEnabled = 'is_notification_saver_enabled';
+  static String reminderOptionKey = 'reminder_option';
 
   // ---------------------------------------------------------------------
   // Per-package key prefixes (actual key = prefix + packageName)
@@ -275,5 +276,18 @@ class UsageDataSaver {
   static Future<bool> isNotificationSaverEnabled() async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
     return preferences.getBool(notificationSaverEnabled) ?? true;
+  }
+
+  // =======================================================================
+  // reminder_option
+  // =======================================================================
+  static Future<bool> saveReminderOption(int option) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setInt(reminderOptionKey, option);
+  }
+
+  static Future<int> getReminderOption() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getInt(reminderOptionKey) ?? 0;
   }
 }

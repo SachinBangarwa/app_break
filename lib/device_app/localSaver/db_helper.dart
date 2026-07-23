@@ -49,6 +49,7 @@ class AppDbHelper {
         'lastOpened': 'INTEGER DEFAULT 0',
         'todayLimit': 'INTEGER DEFAULT 0',
         'todayUsage': 'INTEGER DEFAULT 0',
+        'extraLimit': 'INTEGER DEFAULT 0',
       };
 
       for (var entry in newCols.entries) {
@@ -74,7 +75,8 @@ class AppDbHelper {
         countdown INTEGER DEFAULT 0,
         lastOpened INTEGER DEFAULT 0,
         todayLimit INTEGER DEFAULT 0,
-        todayUsage INTEGER DEFAULT 0
+        todayUsage INTEGER DEFAULT 0,
+        extraLimit INTEGER DEFAULT 0
       )
     ''');
   }
@@ -245,6 +247,17 @@ class AppDbHelper {
         'todayLimit': limitMs,
         'todayUsage': todayUsageMs,
       },
+      where: 'packageName = ?',
+      whereArgs: [packageName],
+    );
+  }
+
+  /// Updates temporary extra limit status of an app.
+  Future<void> updateAppExtraLimit(String packageName, int extraLimitMs) async {
+    final db = await database;
+    await db.update(
+      'installed_apps',
+      {'extraLimit': extraLimitMs},
       where: 'packageName = ?',
       whereArgs: [packageName],
     );

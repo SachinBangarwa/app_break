@@ -12,7 +12,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/device_app/localSaver/active_apps_manager.dart';
-
 import '../localSaver/custom_app_model.dart';
 
 class DeviceAppsController extends GetxController with WidgetsBindingObserver {
@@ -23,7 +22,7 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
   final delaySecondsMap = <String, int>{}.obs;
   final isLoading = false.obs;
   final errorMessage = ''.obs;
-  
+
   final hasUsagePermission = false.obs;
   final hasOverlayPermission = false.obs;
   final isServiceRunning = false.obs;
@@ -61,7 +60,7 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
     try {
       final hasOverlay = await FlutterOverlayWindow.isPermissionGranted();
       final isRunning = await FlutterBackgroundService().isRunning();
-      
+
       Map<String, int> tempLimitsMap = {};
       Map<String, bool> tempDelayEnabledMap = {};
       Map<String, int> tempDelaySecondsMap = {};
@@ -75,7 +74,7 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
           tempDelaySecondsMap[app.packageName] = app.countdown;
         }
       }
-      
+
       hasOverlayPermission.value = hasOverlay;
       isServiceRunning.value = isRunning;
       limitsMap.assignAll(tempLimitsMap);
@@ -98,7 +97,9 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
         final service = FlutterBackgroundService();
         final isRunning = await service.isRunning();
         if (!isRunning) {
-          debugPrint("[DeviceAppsController] All permissions granted. Auto-starting background service...");
+          debugPrint(
+            "[DeviceAppsController] All permissions granted. Auto-starting background service...",
+          );
           final started = await service.startService();
           if (started) {
             isServiceRunning.value = true;
@@ -116,7 +117,8 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
 
     if (!Platform.isAndroid) {
       isLoading.value = false;
-      errorMessage.value = 'Listing installed apps is only supported on Android devices.';
+      errorMessage.value =
+          'Listing installed apps is only supported on Android devices.';
       return;
     }
 
@@ -129,50 +131,63 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       if (hasUsagePermission.value) {
         final now = DateTime.now();
         final endDate = now;
-        
-        final startDate = DateTime(now.year, now.month, now.day)
-            .subtract(Duration(days: selectedDays.value - 1));
-            
+
+        final startDate = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: selectedDays.value - 1));
+
         final queryStartDate = startDate.subtract(const Duration(days: 1));
-        
-        List<EventUsageInfo> events = await UsageStats.queryEvents(queryStartDate, endDate);
-        
+
+        List<EventUsageInfo> events = await UsageStats.queryEvents(
+          queryStartDate,
+          endDate,
+        );
+
         events.sort((a, b) {
           final aTime = int.tryParse(a.timeStamp ?? '0') ?? 0;
           final bTime = int.tryParse(b.timeStamp ?? '0') ?? 0;
           return aTime.compareTo(bTime);
         });
-        
+
         Map<String, int> tempUsageMap = {};
         String? activeApp;
         int activeStartTime = 0;
-        
+
         final startBoundary = startDate.millisecondsSinceEpoch;
         final endBoundary = endDate.millisecondsSinceEpoch;
-        
+
         for (var event in events) {
           final pName = event.packageName ?? '';
           if (pName.isEmpty) continue;
-          
+
           final eventTime = int.tryParse(event.timeStamp ?? '0') ?? 0;
           if (eventTime == 0) continue;
-          
+
           final eType = event.eventType;
-          
+
           if (eType == '1') {
             if (activeApp != null) {
-              final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+              final startTime =
+                  activeStartTime < startBoundary
+                      ? startBoundary
+                      : activeStartTime;
               final endTime = eventTime > endBoundary ? endBoundary : eventTime;
               final duration = endTime - startTime;
               if (duration > 0) {
-                tempUsageMap[activeApp] = (tempUsageMap[activeApp] ?? 0) + duration;
+                tempUsageMap[activeApp] =
+                    (tempUsageMap[activeApp] ?? 0) + duration;
               }
             }
             activeApp = pName;
             activeStartTime = eventTime;
           } else if (eType == '2') {
             if (activeApp == pName) {
-              final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+              final startTime =
+                  activeStartTime < startBoundary
+                      ? startBoundary
+                      : activeStartTime;
               final endTime = eventTime > endBoundary ? endBoundary : eventTime;
               final duration = endTime - startTime;
               if (duration > 0) {
@@ -182,26 +197,31 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
             }
           } else if (eType == '16' || eType == '17') {
             if (activeApp != null) {
-              final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+              final startTime =
+                  activeStartTime < startBoundary
+                      ? startBoundary
+                      : activeStartTime;
               final endTime = eventTime > endBoundary ? endBoundary : eventTime;
               final duration = endTime - startTime;
               if (duration > 0) {
-                tempUsageMap[activeApp] = (tempUsageMap[activeApp] ?? 0) + duration;
+                tempUsageMap[activeApp] =
+                    (tempUsageMap[activeApp] ?? 0) + duration;
               }
               activeApp = null;
             }
           }
         }
-        
+
         if (activeApp != null) {
-          final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+          final startTime =
+              activeStartTime < startBoundary ? startBoundary : activeStartTime;
           final endTime = endBoundary;
           final duration = endTime - startTime;
           if (duration > 0) {
             tempUsageMap[activeApp] = (tempUsageMap[activeApp] ?? 0) + duration;
           }
         }
-        
+
         usageMap.assignAll(tempUsageMap);
       } else {
         usageMap.clear();
@@ -209,7 +229,7 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
 
       // 3. Fetch Installed Apps from SQLite database
       final apps = await AppDbHelper.instance.getApps(excludeSystemApps: true);
-      
+
       if (hasUsagePermission.value) {
         apps.sort((a, b) {
           final aTime = usageMap[a.packageName] ?? 0;
@@ -222,7 +242,7 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       } else {
         apps.sort((a, b) => a.name.compareTo(b.name));
       }
-      
+
       allApps.assignAll(apps);
       isLoading.value = false;
 
@@ -242,7 +262,8 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
     } catch (_) {}
 
     final prefs = await SharedPreferences.getInstance();
-    final isAccessibilityEnabled = prefs.getBool('is_accessibility_enabled') ?? false;
+    final isAccessibilityEnabled =
+        prefs.getBool('is_accessibility_enabled') ?? false;
 
     CustomAppModel? ramApp;
     for (final a in ActiveAppsManager.activeAppsList) {
@@ -256,7 +277,8 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
     final isBlocked = limitMs > 0 && todayUsageMs >= limitMs;
 
     final delayEnabled = ramApp != null && ramApp.countdown > 0;
-    final delaySeconds = ramApp != null && ramApp.countdown > 0 ? ramApp.countdown : 10;
+    final delaySeconds =
+        ramApp != null && ramApp.countdown > 0 ? ramApp.countdown : 10;
 
     if (isAccessibilityEnabled) {
       try {
@@ -314,7 +336,11 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  Future<void> updateDelayConfig(String packageName, bool enabled, int seconds) async {
+  Future<void> updateDelayConfig(
+    String packageName,
+    bool enabled,
+    int seconds,
+  ) async {
     String displayName = packageName;
     bool isSystemApp = false;
     Uint8List? icon;
@@ -324,6 +350,14 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       isSystemApp = app.isSystemApp;
       icon = app.icon;
     } catch (_) {}
+
+    if (enabled && seconds > 0) {
+      delayEnabledMap[packageName] = true;
+      delaySecondsMap[packageName] = seconds;
+    } else {
+      delayEnabledMap.remove(packageName);
+      delaySecondsMap.remove(packageName);
+    }
 
     ActiveAppsManager.updateApp(
       packageName: packageName,
@@ -336,7 +370,11 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
     await checkServiceAndPermissions();
   }
 
-  Future<void> updateLimit(String packageName, int selectedMinutes, String appName) async {
+  Future<void> updateLimit(
+    String packageName,
+    int selectedMinutes,
+    String appName,
+  ) async {
     final limitMs = selectedMinutes * 60000;
     bool isSystemApp = false;
     Uint8List? icon;
@@ -345,6 +383,12 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
       isSystemApp = app.isSystemApp;
       icon = app.icon;
     } catch (_) {}
+
+    if (limitMs > 0) {
+      limitsMap[packageName] = limitMs;
+    } else {
+      limitsMap.remove(packageName);
+    }
 
     ActiveAppsManager.updateApp(
       packageName: packageName,
@@ -356,12 +400,13 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
 
     if (limitMs == 0) {
       final prefs = await SharedPreferences.getInstance();
-      final blockedPkg = prefs.getString(UsageDataSaver.activeBlockedPackage) ?? '';
+      final blockedPkg =
+          prefs.getString(UsageDataSaver.activeBlockedPackage) ?? '';
       if (blockedPkg == packageName) {
         await prefs.remove(UsageDataSaver.activeBlockedPackage);
       }
     }
-    
+
     await checkServiceAndPermissions();
 
     if (selectedMinutes > 0 && !isServiceRunning.value) {

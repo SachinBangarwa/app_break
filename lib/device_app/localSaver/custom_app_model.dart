@@ -10,6 +10,9 @@ class CustomAppModel {
   final int lastOpened;
   final int todayLimit;
   final int todayUsage;
+  final int extraLimit;
+  final int sessionLimit;
+  final int sessionUsage;
 
   CustomAppModel({
     required this.packageName,
@@ -21,6 +24,9 @@ class CustomAppModel {
     required this.lastOpened,
     required this.todayLimit,
     required this.todayUsage,
+    required this.extraLimit,
+    this.sessionLimit = 0,
+    this.sessionUsage = 0,
   });
 
   factory CustomAppModel.fromMap(Map<String, dynamic> map) {
@@ -44,11 +50,14 @@ class CustomAppModel {
       lastOpened: map['lastOpened'] as int? ?? 0,
       todayLimit: map['todayLimit'] as int? ?? 0,
       todayUsage: map['todayUsage'] as int? ?? 0,
+      extraLimit: map['extraLimit'] as int? ?? 0,
+      sessionLimit: map['sessionLimit'] as int? ?? 0,
+      sessionUsage: map['sessionUsage'] as int? ?? 0,
     );
   }
 
   @override
   String toString() {
-    return 'CustomAppModel(packageName: $packageName, displayName: $displayName, hasIcon: ${icon != null}, isSystemApp: $isSystemApp, isFavorite: $isFavorite, countdown: $countdown, lastOpened: $lastOpened, todayLimit: $todayLimit, todayUsage: $todayUsage)';
+    return 'CustomAppModel(packageName: $packageName, displayName: $displayName, hasIcon: ${icon != null}, isSystemApp: $isSystemApp, isFavorite: $isFavorite, countdown: $countdown, lastOpened: $lastOpened, todayLimit: $todayLimit, todayUsage: $todayUsage, extraLimit: $extraLimit, sessionLimit: $sessionLimit, sessionUsage: $sessionUsage)';
   }
 }

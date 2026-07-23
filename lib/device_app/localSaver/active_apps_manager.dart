@@ -8,6 +8,9 @@ import 'db_helper.dart';
 
 class ActiveAppsManager {
   static final RxList<CustomAppModel> activeAppsList = <CustomAppModel>[].obs;
+  static final Map<String, int> sessionLimitMap = {};
+  static final Map<String, int> sessionStartTimeMap = {};
+  static int reminderOptionSetting = 0;
 
   static void updateApp({
     required String packageName,
@@ -19,9 +22,14 @@ class ActiveAppsManager {
     int? todayLimit,
     int? todayUsage,
     int? lastOpened,
+    int? extraLimit,
+    int? sessionLimit,
+    int? sessionUsage,
     bool isServiceIsolate = false,
   }) {
-    int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
+    int index = activeAppsList.indexWhere(
+      (app) => app.packageName == packageName,
+    );
 
     if (index != -1) {
       var existing = activeAppsList[index];
@@ -35,22 +43,37 @@ class ActiveAppsManager {
         todayLimit: todayLimit ?? existing.todayLimit,
         todayUsage: todayUsage ?? existing.todayUsage,
         lastOpened: lastOpened ?? existing.lastOpened,
+        extraLimit: extraLimit ?? existing.extraLimit,
+        sessionLimit: sessionLimit ?? existing.sessionLimit,
+        sessionUsage: sessionUsage ?? existing.sessionUsage,
       );
 
-      if (updated.isFavorite == 0 && updated.countdown == 0 && updated.todayLimit == 0) {
-        print("[ActiveAppsManager] REMOVED app from memory list: $packageName (All parameters became 0/inactive)");
+      if (updated.isFavorite == 0 &&
+          updated.countdown == 0 &&
+          updated.todayLimit == 0 &&
+          updated.extraLimit == 0) {
+        print(
+          "[ActiveAppsManager] REMOVED app from memory list: $packageName (All parameters became 0/inactive)",
+        );
         activeAppsList.removeAt(index);
       } else {
-        print("[ActiveAppsManager] UPDATED app in memory list: $packageName -> Favorite: ${updated.isFavorite}, Countdown: ${updated.countdown}s, Limit: ${updated.todayLimit}ms");
+        print(
+          "[ActiveAppsManager] UPDATED app in memory list: $packageName -> Favorite: ${updated.isFavorite}, Countdown: ${updated.countdown}s, Limit: ${updated.todayLimit}ms, ExtraLimit: ${updated.extraLimit}ms, SessionLimit: ${updated.sessionLimit}ms",
+        );
         activeAppsList[index] = updated;
       }
     } else {
-      bool shouldAdd = (isFavorite == 1) ||
-                       (countdown != null && countdown > 0) || 
-                       (todayLimit != null && todayLimit > 0);
+      bool shouldAdd =
+          (isFavorite == 1) ||
+          (countdown != null && countdown > 0) ||
+          (todayLimit != null && todayLimit > 0) ||
+          (extraLimit != null && extraLimit > 0) ||
+          (sessionLimit != null && sessionLimit > 0);
 
       if (shouldAdd) {
-        print("[ActiveAppsManager] ADDED new app to memory list: $packageName -> Favorite: ${isFavorite ?? 0}, Countdown: ${countdown ?? 0}s, Limit: ${todayLimit ?? 0}ms");
+        print(
+          "[ActiveAppsManager] ADDED new app to memory list: $packageName -> Favorite: ${isFavorite ?? 0}, Countdown: ${countdown ?? 0}s, Limit: ${todayLimit ?? 0}ms, ExtraLimit: ${extraLimit ?? 0}ms, SessionLimit: ${sessionLimit ?? 0}ms",
+        );
         activeAppsList.add(
           CustomAppModel(
             packageName: packageName,
@@ -62,6 +85,9 @@ class ActiveAppsManager {
             todayLimit: todayLimit ?? 0,
             todayUsage: todayUsage ?? 0,
             lastOpened: lastOpened ?? 0,
+            extraLimit: extraLimit ?? 0,
+            sessionLimit: sessionLimit ?? 0,
+            sessionUsage: sessionUsage ?? 0,
           ),
         );
       }
@@ -69,16 +95,19 @@ class ActiveAppsManager {
 
     print("[ActiveAppsManager] Current Active Apps in RAM: $activeAppsList");
 
-
     if (!isServiceIsolate) {
       if (isFavorite != null) {
-        print("[ActiveAppsManager] DATABASE UPDATE: Saving Favorite status = $isFavorite for $packageName in background");
+        print(
+          "[ActiveAppsManager] DATABASE UPDATE: Saving Favorite status = $isFavorite for $packageName in background",
+        );
         AppDbHelper.instance.updateFavoriteStatus(packageName, isFavorite == 1);
         _notifyLimitChanged(packageName);
       }
 
       if (countdown != null) {
-        print("[ActiveAppsManager] DATABASE UPDATE: Saving Countdown Delay = ${countdown}s for $packageName in background");
+        print(
+          "[ActiveAppsManager] DATABASE UPDATE: Saving Countdown Delay = ${countdown}s for $packageName in background",
+        );
         AppDbHelper.instance.updateAppCountdown(packageName, countdown);
         _notifyLimitChanged(packageName);
       }
@@ -99,7 +128,6 @@ class ActiveAppsManager {
   // BACKEND/DATABASE HELPER METHODS
   // =========================================================================
 
-
   static void _updateLimitAndFetchUsageBackground({
     required String packageName,
     required String displayName,
@@ -109,12 +137,18 @@ class ActiveAppsManager {
   }) async {
     print("[ActiveAppsManager] Fetching live system usage for $packageName...");
     final usageMs = await calculateTodaySystemUsage(packageName);
-    print("[ActiveAppsManager] Live system usage for $packageName fetched: ${usageMs / 1000} seconds");
+    print(
+      "[ActiveAppsManager] Live system usage for $packageName fetched: ${usageMs / 1000} seconds",
+    );
 
-    int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
+    int index = activeAppsList.indexWhere(
+      (app) => app.packageName == packageName,
+    );
     if (index != -1) {
       var existing = activeAppsList[index];
-      print("[ActiveAppsManager] UPDATING usage in memory list for $packageName to ${usageMs}ms");
+      print(
+        "[ActiveAppsManager] UPDATING usage in memory list for $packageName to ${usageMs}ms",
+      );
       activeAppsList[index] = CustomAppModel(
         packageName: packageName,
         displayName: displayName,
@@ -125,10 +159,13 @@ class ActiveAppsManager {
         todayLimit: limitMs,
         todayUsage: usageMs,
         lastOpened: existing.lastOpened,
+        extraLimit: existing.extraLimit,
       );
     }
 
-    print("[ActiveAppsManager] DATABASE UPDATE: Saving todayLimit = ${limitMs}ms and todayUsage = ${usageMs}ms for $packageName in background");
+    print(
+      "[ActiveAppsManager] DATABASE UPDATE: Saving todayLimit = ${limitMs}ms and todayUsage = ${usageMs}ms for $packageName in background",
+    );
     await AppDbHelper.instance.updateAppLimit(packageName, limitMs, usageMs);
 
     _notifyLimitChanged(packageName);
@@ -139,10 +176,14 @@ class ActiveAppsManager {
       final service = FlutterBackgroundService();
       service.invoke('limitChanged', {'packageName': packageName});
 
-      int index = activeAppsList.indexWhere((app) => app.packageName == packageName);
+      int index = activeAppsList.indexWhere(
+        (app) => app.packageName == packageName,
+      );
       if (index != -1) {
         final app = activeAppsList[index];
-        print("[ActiveAppsManager] Sending syncActiveApp to background service for ${app.packageName} (Favorite: ${app.isFavorite}, Limit: ${app.todayLimit}ms, Countdown: ${app.countdown}s)");
+        print(
+          "[ActiveAppsManager] Sending syncActiveApp to background service for ${app.packageName} (Favorite: ${app.isFavorite}, Limit: ${app.todayLimit}ms, Countdown: ${app.countdown}s)",
+        );
         service.invoke('syncActiveApp', {
           'packageName': app.packageName,
           'displayName': app.displayName,
@@ -152,10 +193,15 @@ class ActiveAppsManager {
           'todayLimit': app.todayLimit,
           'todayUsage': app.todayUsage,
           'lastOpened': app.lastOpened,
+          'extraLimit': app.extraLimit,
+          'sessionLimit': app.sessionLimit,
+          'sessionUsage': app.sessionUsage,
           'icon': app.icon,
         });
       } else {
-        print("[ActiveAppsManager] Sending syncActiveApp (REMOVE/RESET) to background service for $packageName");
+        print(
+          "[ActiveAppsManager] Sending syncActiveApp (REMOVE/RESET) to background service for $packageName",
+        );
         service.invoke('syncActiveApp', {
           'packageName': packageName,
           'displayName': '',
@@ -165,10 +211,13 @@ class ActiveAppsManager {
           'todayLimit': 0,
           'todayUsage': 0,
           'lastOpened': 0,
+          'extraLimit': 0,
         });
       }
     } catch (e) {
-      print("[ActiveAppsManager] Error syncing active app to background service: $e");
+      print(
+        "[ActiveAppsManager] Error syncing active app to background service: $e",
+      );
     }
   }
 
@@ -177,7 +226,10 @@ class ActiveAppsManager {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
 
-      List<EventUsageInfo> events = await UsageStats.queryEvents(startOfDay, now);
+      List<EventUsageInfo> events = await UsageStats.queryEvents(
+        startOfDay,
+        now,
+      );
       events.sort((a, b) {
         final aTime = int.tryParse(a.timeStamp ?? '0') ?? 0;
         final bTime = int.tryParse(b.timeStamp ?? '0') ?? 0;
@@ -202,7 +254,10 @@ class ActiveAppsManager {
 
         if (eType == '1') {
           if (activeApp == packageName) {
-            final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+            final startTime =
+                activeStartTime < startBoundary
+                    ? startBoundary
+                    : activeStartTime;
             final endTime = eventTime > endBoundary ? endBoundary : eventTime;
             final duration = endTime - startTime;
             if (duration > 0) {
@@ -214,7 +269,10 @@ class ActiveAppsManager {
         } else if (eType == '2') {
           if (activeApp == pName) {
             if (pName == packageName) {
-              final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+              final startTime =
+                  activeStartTime < startBoundary
+                      ? startBoundary
+                      : activeStartTime;
               final endTime = eventTime > endBoundary ? endBoundary : eventTime;
               final duration = endTime - startTime;
               if (duration > 0) {
@@ -225,7 +283,10 @@ class ActiveAppsManager {
           }
         } else if (eType == '16' || eType == '17') {
           if (activeApp == packageName) {
-            final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+            final startTime =
+                activeStartTime < startBoundary
+                    ? startBoundary
+                    : activeStartTime;
             final endTime = eventTime > endBoundary ? endBoundary : eventTime;
             final duration = endTime - startTime;
             if (duration > 0) {
@@ -237,7 +298,8 @@ class ActiveAppsManager {
       }
 
       if (activeApp == packageName) {
-        final startTime = activeStartTime < startBoundary ? startBoundary : activeStartTime;
+        final startTime =
+            activeStartTime < startBoundary ? startBoundary : activeStartTime;
         final endTime = endBoundary;
         final duration = endTime - startTime;
         if (duration > 0) {

@@ -1,236 +1,375 @@
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:installed_apps/installed_apps.dart';
+
 class OverlayWindow extends StatefulWidget {
+  final String initialOverlayType;
   final String initialPackageName;
   final String initialAppName;
   final int initialLimitMinutes;
   final int initialLimitMs;
   final int initialTodayUsageMs;
+  final int initialSessionLimitMs;
+  final int initialSessionUsageMs;
 
   const OverlayWindow({
     super.key,
+    this.initialOverlayType = "session_prompt",
     this.initialPackageName = "",
     this.initialAppName = "This application",
     this.initialLimitMinutes = 0,
     this.initialLimitMs = 0,
     this.initialTodayUsageMs = 0,
+    this.initialSessionLimitMs = 0,
+    this.initialSessionUsageMs = 0,
   });
 
   @override
   State<OverlayWindow> createState() => _OverlayWindowState();
 }
+
 class _OverlayWindowState extends State<OverlayWindow> {
+  String _overlayType = "session_prompt";
   String _appName = "This application";
   String _packageName = "";
-  int _currentLimitMinutes = 0;
-  bool _isExtending = false;
-
-  int _limitMs = 0;
   int _todayUsageMs = 0;
+  int _sessionLimitMs = 0;
+  int _sessionUsageMs = 0;
+  bool _showBottomSheet = false;
+
+  final List<Map<String, dynamic>> _sessionOptions = const [
+    {'label': '1 min', 'minutes': 1},
+    {'label': '3 min', 'minutes': 3},
+    {'label': '5 min', 'minutes': 5},
+    {'label': '10 min', 'minutes': 10},
+    {'label': '15 min', 'minutes': 15},
+    {'label': '20 min', 'minutes': 20},
+    {'label': '30 min', 'minutes': 30},
+    {'label': '45 min', 'minutes': 45},
+    {'label': '1 hour', 'minutes': 60},
+    {'label': '90 min', 'minutes': 90},
+  ];
 
   @override
   void initState() {
     super.initState();
+    _overlayType = widget.initialOverlayType;
     _packageName = widget.initialPackageName;
     _appName = widget.initialAppName;
-    _currentLimitMinutes = widget.initialLimitMinutes;
-    _limitMs = widget.initialLimitMs > 0 ? widget.initialLimitMs : (widget.initialLimitMinutes * 60000);
     _todayUsageMs = widget.initialTodayUsageMs;
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
+    _sessionLimitMs = widget.initialSessionLimitMs;
+    _sessionUsageMs = widget.initialSessionUsageMs;
   }
 
   @override
   void didUpdateWidget(covariant OverlayWindow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialPackageName != oldWidget.initialPackageName ||
+    if (widget.initialOverlayType != oldWidget.initialOverlayType ||
+        widget.initialPackageName != oldWidget.initialPackageName ||
         widget.initialAppName != oldWidget.initialAppName ||
-        widget.initialLimitMinutes != oldWidget.initialLimitMinutes ||
-        widget.initialLimitMs != oldWidget.initialLimitMs ||
-        widget.initialTodayUsageMs != oldWidget.initialTodayUsageMs) {
+        widget.initialTodayUsageMs != oldWidget.initialTodayUsageMs ||
+        widget.initialSessionLimitMs != oldWidget.initialSessionLimitMs ||
+        widget.initialSessionUsageMs != oldWidget.initialSessionUsageMs) {
       setState(() {
+        _overlayType = widget.initialOverlayType;
         _packageName = widget.initialPackageName;
         _appName = widget.initialAppName;
-        _currentLimitMinutes = widget.initialLimitMinutes;
-        _limitMs = widget.initialLimitMs > 0 ? widget.initialLimitMs : (widget.initialLimitMinutes * 60000);
         _todayUsageMs = widget.initialTodayUsageMs;
-        _isExtending = false;
+        _sessionLimitMs = widget.initialSessionLimitMs;
+        _sessionUsageMs = widget.initialSessionUsageMs;
+        _showBottomSheet = false;
       });
     }
   }
 
-  Future<void> _extendLimit() async {
-    if (_packageName.isEmpty || _isExtending) {
+  Future<void> _closeAppAndGoHome() async {
+    if (_packageName.isNotEmpty) {
+      try {
+        try {
+          final service = FlutterBackgroundService();
+          service.invoke('limitChanged', {
+            'packageName': _packageName,
+          });
+        } catch (e) {
+          debugPrint('Error invoking limitChanged from close: $e');
+        }
+        await InstalledApps.startApp("com.example.testproject");
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (e) {
+        debugPrint("Error going home on close: $e");
+      }
+    }
+    await FlutterOverlayWindow.closeOverlay();
+  }
+
+  Future<void> _selectSessionLimit(int minutes) async {
+    if (_packageName.isEmpty) {
       await FlutterOverlayWindow.closeOverlay();
       return;
     }
 
-    setState(() {
-      _isExtending = true;
-    });
-
     try {
-      final baseMs = _limitMs > _todayUsageMs ? _limitMs : _todayUsageMs;
-      final newLimitMs = baseMs + (2 * 60000);
-
-      // Invoke event in background service to update DB and RAM list
       final service = FlutterBackgroundService();
-      service.invoke('extendLimit', {
+      service.invoke('setSessionLimit', {
         'packageName': _packageName,
-        'newLimitMs': newLimitMs,
+        'sessionMinutes': minutes,
       });
 
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 200));
     } catch (e) {
-      debugPrint("Error extending limit: $e");
+      debugPrint("Error setting session limit: $e");
     } finally {
-      if (mounted) {
-        setState(() {
-          _isExtending = false;
-        });
-      }
       await FlutterOverlayWindow.closeOverlay();
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final spentMinutes = (_todayUsageMs / 60000).floor();
+    final sessionLimitMin = (_sessionLimitMs / 60000).round();
+    final sessionUsageMin = (_sessionUsageMs / 60000).floor();
+    final topPadding = MediaQuery.of(context).padding.top;
+    final isBlockMode = _overlayType == 'block';
+
     return Scaffold(
-      backgroundColor: Colors.black.withValues(alpha: 0.75), // Translucent backdrop
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+      backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
+      body: Stack(
+        children: [
+          // Main Screen Layout
+          SafeArea(
+            bottom: false,
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: Colors.white,
+              padding: EdgeInsets.only(
+                left: 28,
+                right: 28,
+                top: topPadding > 60 ? topPadding + 48 : 80,
+                bottom: 24,
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Warning Icon
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.hourglass_bottom_rounded,
-                  color: Colors.red.shade600,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Title
-              const Text(
-                'Time Limit Reached',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Description
-              Text(
-                'You have used $_appName for $_currentLimitMinutes minutes today. Please take a break!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Actions Row
-              Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _isExtending
-                          ? null
-                          : () async {
-                        if (_packageName.isNotEmpty) {
-                          try {
-                            try {
-                              final service = FlutterBackgroundService();
-                              service.invoke('limitChanged', {
-                                'packageName': _packageName,
-                              });
-                            } catch (e) {
-                              debugPrint('Error invoking limitChanged from close: $e');
-                            }
-                            // Start launcher to go Home
-                            await InstalledApps.startApp("com.example.testproject");
-                            await Future.delayed(const Duration(milliseconds: 300));
-                          } catch (e) {
-                            debugPrint("Error going home on close: $e");
-                          }
-                        }
-                        await FlutterOverlayWindow.closeOverlay();
-                      },
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: Text(
-                        'Close',
-                        style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold),
-                      ),
+                  // Top Subtitle: "YouTube is paused by App Break"
+                  Text(
+                    '$_appName is paused by App Break',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.black87,
+                      letterSpacing: -0.2,
                     ),
+                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
+
+                  const Spacer(flex: 2),
+
+                  // Center Icon (Hourglass for block, Heart for session prompt)
+                  Icon(
+                    isBlockMode
+                        ? Icons.hourglass_bottom_rounded
+                        : Icons.favorite_border_rounded,
+                    size: 84,
+                    color: isBlockMode
+                        ? Colors.red.shade600
+                        : Colors.black.withValues(alpha: 0.85),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Main Headline
+                  Text(
+                    isBlockMode
+                        ? 'Time Limit Reached'
+                        : 'Do you really need it\nnow?',
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                      height: 1.25,
+                      letterSpacing: -0.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Subtext
+                  Text(
+                    isBlockMode
+                        ? 'You have used $_appName for $spentMinutes m today.\nPlease take a break!'
+                        : sessionLimitMin > 0
+                            ? 'Time spent: $sessionUsageMin m / $sessionLimitMin m'
+                            : 'Time spent: $spentMinutes m',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.grey.shade700,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const Spacer(flex: 3),
+
+                  // Primary Button: "Close app"
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
                     child: ElevatedButton(
-                      onPressed: _isExtending ? null : _extendLimit,
+                      onPressed: _closeAppAndGoHome,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade600,
+                        backgroundColor: Colors.black,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                      child: _isExtending
-                          ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      child: const Text(
+                        'Close app',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
-                      )
-                          : const Text(
-                        '+2 Minutes',
-                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // Secondary Button: "Continue in app" (ONLY for session_prompt)
+                  if (!isBlockMode)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _showBottomSheet = true;
+                          });
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.black,
+                        ),
+                        child: const Text(
+                          'Continue in app',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 12),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+
+          // Bottom Sheet Modal Overlay (Matching User's Screenshot)
+          if (_showBottomSheet)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.4),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.78,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Bottom Sheet Header: Title & Close Button
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'How long do you need it?',
+                                style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.black87,
+                                  size: 24,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _showBottomSheet = false;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const Divider(height: 1, thickness: 1),
+
+                        // Time Options List
+                        Flexible(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: _sessionOptions.length,
+                            separatorBuilder: (context, index) =>
+                                const Divider(height: 1, thickness: 0.5),
+                            itemBuilder: (context, index) {
+                              final item = _sessionOptions[index];
+                              final label = item['label'] as String;
+                              final minutes = item['minutes'] as int;
+
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 4,
+                                ),
+                                title: Text(
+                                  label,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w400,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                trailing: const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: Colors.black54,
+                                  size: 22,
+                                ),
+                                onTap: () => _selectSessionLimit(minutes),
+                              );
+                            },
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -12,13 +12,15 @@ class OverlayDispatcher extends StatefulWidget {
 }
 
 class _OverlayDispatcherState extends State<OverlayDispatcher> {
-  String _overlayType = 'block';
+  String _overlayType = '';
   String _packageName = "";
   String _appName = "this application";
   int _limitMinutes = 0;
   int _delaySeconds = 10;
   int _limitMs = 0;
   int _todayUsageMs = 0;
+  int _sessionLimitMs = 0;
+  int _sessionUsageMs = 0;
   int _overlayId = 0;
   StreamSubscription? _dataSubscription;
   bool _isLoading = true;
@@ -36,6 +38,8 @@ class _OverlayDispatcherState extends State<OverlayDispatcher> {
         final limitMs = event['limitMs'] as int?;
         final todayUsageMs = event['todayUsageMs'] as int?;
         final delaySecsVal = event['delaySeconds'] as int?;
+        final sessLimitMs = event['sessionLimitMs'] as int?;
+        final sessUsageMs = event['sessionUsageMs'] as int?;
 
         if (mounted) {
           setState(() {
@@ -62,6 +66,12 @@ class _OverlayDispatcherState extends State<OverlayDispatcher> {
             if (delaySecsVal != null) {
               _delaySeconds = delaySecsVal;
             }
+            if (sessLimitMs != null) {
+              _sessionLimitMs = sessLimitMs;
+            }
+            if (sessUsageMs != null) {
+              _sessionUsageMs = sessUsageMs;
+            }
           });
         }
       }
@@ -76,9 +86,9 @@ class _OverlayDispatcherState extends State<OverlayDispatcher> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading || _overlayType.isEmpty) {
       return const Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         body: SizedBox.shrink(),
       );
     }
@@ -93,12 +103,15 @@ class _OverlayDispatcherState extends State<OverlayDispatcher> {
     }
 
     return OverlayWindow(
-      key: ValueKey('block_$_overlayId'),
+      key: ValueKey('${_overlayType}_$_overlayId'),
+      initialOverlayType: _overlayType,
       initialPackageName: _packageName,
       initialAppName: _appName,
       initialLimitMinutes: _limitMinutes,
       initialLimitMs: _limitMs,
       initialTodayUsageMs: _todayUsageMs,
+      initialSessionLimitMs: _sessionLimitMs,
+      initialSessionUsageMs: _sessionUsageMs,
     );
   }
 }

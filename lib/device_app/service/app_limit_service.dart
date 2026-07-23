@@ -3,14 +3,19 @@ import 'dart:typed_data';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/device_app/service/usage_helper.dart';
 import '../localSaver/db_helper.dart';
 import '../localSaver/active_apps_manager.dart';
 import '../localSaver/custom_app_model.dart';
-import '../localSaver/localSaver.dart';
-import 'limit_monitor.dart';
+import 'app_limit_coordinator.dart';
+import 'accessibility_app_monitor.dart';
+import 'polling_app_monitor.dart';
 
+/// App Limit Service:
+/// Background Foreground Service initialization aur IPC events handle karta hai.
 class AppLimitService {
+  /// Background Service ko initialize aur configure karta hai
   static Future<void> initializeService() async {
     final service = FlutterBackgroundService();
 
@@ -32,9 +37,10 @@ class AppLimitService {
   }
 }
 
+/// Background Isolate Entry Point:
+/// Isolate initialize hone par active apps load karta hai aur UI se aane wale events ko listen karta hai.
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
-
   if (service is AndroidServiceInstance) {
     service.on('setAsForeground').listen((event) {
       service.setAsForegroundService();
@@ -50,16 +56,20 @@ void onStart(ServiceInstance service) async {
   });
 
   try {
+    // Database se active apps RAM memory me load karta hai
     final activeApps = await AppDbHelper.instance.getActiveAppsFromDb();
     ActiveAppsManager.activeAppsList.clear();
     ActiveAppsManager.activeAppsList.addAll(activeApps);
-    print("[AppLimitService] Loaded active apps into RAM on service start: ${activeApps.length} apps");
+    ActiveAppsManager.reminderOptionSetting = await UsageDataSaver.getReminderOption();
+    print(
+      "[AppLimitService] Loaded active apps (${activeApps.length}) & Reminder Setting (${ActiveAppsManager.reminderOptionSetting}) into RAM on service start",
+    );
 
-    // Sync today usage from OS for apps that have limits configured
+    // Dynamic app usage sync karta hai
     for (final app in activeApps) {
       if (app.todayLimit > 0) {
         final todayUsageMs = await getTodayUsageForPackage(app.packageName);
-        
+
         ActiveAppsManager.updateApp(
           packageName: app.packageName,
           displayName: app.displayName,
@@ -68,28 +78,38 @@ void onStart(ServiceInstance service) async {
           isServiceIsolate: true,
         );
 
-        await AppDbHelper.instance.updateAppUsage(app.packageName, todayUsageMs);
-        print("[AppLimitService] Synced OS usage for ${app.packageName} on service restart: ${todayUsageMs / 1000}s");
+        await AppDbHelper.instance.updateAppUsage(
+          app.packageName,
+          todayUsageMs,
+        );
+        print(
+          "🎯 [TRACK] 🔄 [SERVICE_RESTART_TEST] App: ${app.packageName} | DB Stored Usage: ${app.todayUsage / 1000}s | Fresh Android OS System Usage: ${todayUsageMs / 1000}s | Diff: ${((todayUsageMs - app.todayUsage).abs() / 1000).toStringAsFixed(1)}s",
+        );
       }
     }
 
-    final listData = ActiveAppsManager.activeAppsList.map((app) => {
-      'packageName': app.packageName,
-      'displayName': app.displayName,
-      'isSystemApp': app.isSystemApp,
-      'isFavorite': app.isFavorite,
-      'countdown': app.countdown,
-      'todayLimit': app.todayLimit,
-      'todayUsage': app.todayUsage,
-      'lastOpened': app.lastOpened,
-      'icon': app.icon,
-    }).toList();
+    final listData =
+        ActiveAppsManager.activeAppsList
+            .map(
+              (app) => {
+                'packageName': app.packageName,
+                'displayName': app.displayName,
+                'isSystemApp': app.isSystemApp,
+                'isFavorite': app.isFavorite,
+                'countdown': app.countdown,
+                'todayLimit': app.todayLimit,
+                'todayUsage': app.todayUsage,
+                'lastOpened': app.lastOpened,
+                'icon': app.icon,
+              },
+            )
+            .toList();
     service.invoke('syncFullList', {'apps': listData});
   } catch (e) {
     print("[AppLimitService] Error loading active apps on service start: $e");
   }
 
-  // Event Listeners from UI
+  // Single app RAM/DB update event listener
   service.on('syncActiveApp').listen((event) async {
     if (event != null) {
       final pkg = event['packageName'] as String?;
@@ -101,7 +121,11 @@ void onStart(ServiceInstance service) async {
         final todayLimit = event['todayLimit'] as int?;
         final todayUsage = event['todayUsage'] as int?;
         final lastOpened = event['lastOpened'] as int?;
-        
+        final extraLimit = event['extraLimit'] as int?;
+
+        final sessionLimit = event['sessionLimit'] as int?;
+        final sessionUsage = event['sessionUsage'] as int?;
+
         dynamic iconData = event['icon'];
         Uint8List? iconBytes;
         if (iconData != null) {
@@ -112,8 +136,6 @@ void onStart(ServiceInstance service) async {
           }
         }
 
-
-
         ActiveAppsManager.updateApp(
           packageName: pkg,
           displayName: displayName,
@@ -123,6 +145,9 @@ void onStart(ServiceInstance service) async {
           todayLimit: todayLimit,
           todayUsage: todayUsage,
           lastOpened: lastOpened,
+          extraLimit: extraLimit,
+          sessionLimit: sessionLimit,
+          sessionUsage: sessionUsage,
           icon: iconBytes,
           isServiceIsolate: true,
         );
@@ -130,18 +155,22 @@ void onStart(ServiceInstance service) async {
     }
   });
 
-  service.on('limitChanged').listen((event) async {
-    print("[AppLimitService] limitChanged event received in background");
-    await LimitMonitor.checkAndConfigureServiceState();
-  });
-
-  service.on('extendLimit').listen((event) async {
+  // User dwara bottom sheet se session limit set karne par IPC event listener
+  service.on('setSessionLimit').listen((event) async {
     if (event != null) {
       final pkg = event['packageName'] as String?;
-      final newLimitMs = event['newLimitMs'] as int?;
-      if (pkg != null && pkg.isNotEmpty && newLimitMs != null) {
-        print("[AppLimitService] extendLimit event received: $pkg -> $newLimitMs ms");
-        
+      final sessionMinutes = (event['sessionMinutes'] as int?) ?? 5;
+      final sessionMs = sessionMinutes * 60000;
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      if (pkg != null && pkg.isNotEmpty) {
+        ActiveAppsManager.sessionLimitMap[pkg] = sessionMs;
+        ActiveAppsManager.sessionStartTimeMap[pkg] = now;
+
+        print(
+          "🎯 [TRACK] ⏱️ [SESSION_SET] App: $pkg -> Selected Session Limit: ${sessionMinutes}m (${sessionMs}ms) at ${DateTime.fromMillisecondsSinceEpoch(now)}",
+        );
+
         CustomAppModel? existing;
         for (final app in ActiveAppsManager.activeAppsList) {
           if (app.packageName == pkg) {
@@ -154,11 +183,71 @@ void onStart(ServiceInstance service) async {
           packageName: pkg,
           displayName: existing?.displayName ?? '',
           isSystemApp: existing?.isSystemApp ?? 0,
-          todayLimit: newLimitMs,
+          sessionLimit: sessionMs,
+          sessionUsage: 0,
           isServiceIsolate: true,
         );
 
-        await AppDbHelper.instance.updateAppLimit(pkg, newLimitMs, existing?.todayUsage ?? 0);
+        await AppLimitCoordinator.checkAndConfigureServiceState();
+      }
+    }
+  });
+
+  // User dwara Reminder setting change karne par RAM setting update listener
+  service.on('syncReminderOption').listen((event) async {
+    if (event != null) {
+      final option = event['option'] as int? ?? 0;
+      ActiveAppsManager.reminderOptionSetting = option;
+      print(
+        "🎯 [TRACK] ⚙️ [REMINDER_SETTING_SYNC] Background Service RAM updated to: $option",
+      );
+    }
+  });
+
+  // App limit update hone par re-configuration trigger karta hai
+  service.on('limitChanged').listen((event) async {
+    print("[AppLimitService] limitChanged event received in background");
+    await AppLimitCoordinator.checkAndConfigureServiceState();
+  });
+
+  // Limit extend hone par updated time limit saves/syncs karta hai
+  service.on('extendLimit').listen((event) async {
+    if (event != null) {
+      final pkg = event['packageName'] as String?;
+      final extendMinutes = (event['extendMinutes'] as int?) ?? 2;
+      final extendMs = extendMinutes * 60000;
+
+      if (pkg != null && pkg.isNotEmpty) {
+        CustomAppModel? existing;
+        for (final app in ActiveAppsManager.activeAppsList) {
+          if (app.packageName == pkg) {
+            existing = app;
+            break;
+          }
+        }
+
+        final currentUsage = existing?.todayUsage ?? 0;
+        final currentLimit = existing?.todayLimit ?? 0;
+        final newExtraMs = (currentUsage - currentLimit) + extendMs;
+
+        print(
+          "🎯 [TRACK] ➕ [LIMIT_EXTEND] $pkg -> Added +$extendMinutes Min | currentUsage=${currentUsage / 1000}s, currentLimit=${currentLimit / 1000}s => newExtraLimit=${newExtraMs / 1000}s",
+        );
+
+        ActiveAppsManager.updateApp(
+          packageName: pkg,
+          displayName: existing?.displayName ?? '',
+          isSystemApp: existing?.isSystemApp ?? 0,
+          todayLimit: currentLimit,
+          extraLimit: newExtraMs,
+          todayUsage: currentUsage,
+          isServiceIsolate: true,
+        );
+
+        await AppDbHelper.instance.updateAppExtraLimit(pkg, newExtraMs);
+
+        AccessibilityAppMonitor.setAllowedExtendWindow(pkg, extendMinutes);
+        PollingAppMonitor.setAllowedExtendWindow(pkg, extendMinutes);
 
         service.invoke('syncActiveApp', {
           'packageName': pkg,
@@ -166,64 +255,97 @@ void onStart(ServiceInstance service) async {
           'isSystemApp': existing?.isSystemApp ?? 0,
           'isFavorite': existing?.isFavorite,
           'countdown': existing?.countdown,
-          'todayLimit': newLimitMs,
-          'todayUsage': existing?.todayUsage ?? 0,
+          'todayLimit': currentLimit,
+          'extraLimit': newExtraMs,
+          'todayUsage': currentUsage,
           'lastOpened': existing?.lastOpened,
           'icon': existing?.icon,
         });
 
-        await LimitMonitor.checkAndConfigureServiceState();
+        final prefs = await SharedPreferences.getInstance();
+        final isAccessibilityEnabled =
+            prefs.getBool('is_accessibility_enabled') ?? false;
+
+        if (isAccessibilityEnabled) {
+          await AccessibilityAppMonitor.scheduleAccessibilityCheck(
+            pkg,
+            DateTime.now().millisecondsSinceEpoch,
+          );
+        } else {
+          await AppLimitCoordinator.checkAndConfigureServiceState();
+        }
       }
     }
   });
 
+  // Mindful delay setting change event listener
   service.on('delayChanged').listen((event) async {
     print("[AppLimitService] delayChanged event received in background");
-    await LimitMonitor.checkAndConfigureServiceState();
+    await AppLimitCoordinator.checkAndConfigureServiceState();
   });
 
+  // Accessibility Native Service dwara foreground package change event listener
   service.on('packageNameChanged').listen((event) async {
     final newPackage = event?['packageName'] as String? ?? '';
-    print("[AppLimitService] packageNameChanged: foreground app is now -> $newPackage");
-    
+    print(
+      "[AppLimitService] packageNameChanged: foreground app is now -> $newPackage",
+    );
+
     final prefs = await SharedPreferences.getInstance();
-    final isAccessibilityEnabled = prefs.getBool('is_accessibility_enabled') ?? false;
-    
+    final isAccessibilityEnabled =
+        prefs.getBool('is_accessibility_enabled') ?? false;
+
     if (isAccessibilityEnabled) {
-      await LimitMonitor.handleAccessibilityPackageChange(newPackage);
+      await AccessibilityAppMonitor.handleAccessibilityPackageChange(
+        newPackage,
+      );
     }
   });
 
+  // Accessibility Service toggle (ON/OFF) status change listener
   service.on('accessibilityStatusChanged').listen((event) async {
-    final enabled = event?['enabled'] as bool? ?? false;
+    final enabled = event?['enabled'] as bool? ?? true;
     print("[AppLimitService] accessibilityStatusChanged: enabled = $enabled");
-    await LimitMonitor.checkAndConfigureServiceState();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_accessibility_enabled', enabled);
+
+    await AppLimitCoordinator.checkAndConfigureServiceState();
   });
 
+  // UI dwara full active apps list sync request listener
   service.on('requestActiveAppsSync').listen((event) async {
-    print("[AppLimitService] requestActiveAppsSync event received in background");
+    print(
+      "[AppLimitService] requestActiveAppsSync event received in background",
+    );
     try {
       final activeApps = await AppDbHelper.instance.getActiveAppsFromDb();
       ActiveAppsManager.activeAppsList.clear();
       ActiveAppsManager.activeAppsList.addAll(activeApps);
 
-      final listData = activeApps.map((app) => {
-        'packageName': app.packageName,
-        'displayName': app.displayName,
-        'isSystemApp': app.isSystemApp,
-        'isFavorite': app.isFavorite,
-        'countdown': app.countdown,
-        'todayLimit': app.todayLimit,
-        'todayUsage': app.todayUsage,
-        'lastOpened': app.lastOpened,
-        'icon': app.icon,
-      }).toList();
+      final listData =
+          activeApps
+              .map(
+                (app) => {
+                  'packageName': app.packageName,
+                  'displayName': app.displayName,
+                  'isSystemApp': app.isSystemApp,
+                  'isFavorite': app.isFavorite,
+                  'countdown': app.countdown,
+                  'todayLimit': app.todayLimit,
+                  'todayUsage': app.todayUsage,
+                  'lastOpened': app.lastOpened,
+                  'icon': app.icon,
+                },
+              )
+              .toList();
       service.invoke('syncFullList', {'apps': listData});
     } catch (e) {
       print("[AppLimitService] Error syncing active apps: $e");
     }
   });
 
+  // Overlay status data query listener
   service.on('requestOverlayStatus').listen((event) async {
     final type = event?['type'] as String? ?? 'block';
     final pkg = event?['packageName'] as String? ?? '';
@@ -231,9 +353,10 @@ void onStart(ServiceInstance service) async {
 
     final prefs = await SharedPreferences.getInstance();
     final activeType = prefs.getString('active_overlay_type') ?? '';
-    
+
     if (type == 'restrict' && activeType == 'restrict') {
-      final activeRestrictPkg = prefs.getString('active_restrict_package') ?? '';
+      final activeRestrictPkg =
+          prefs.getString('active_restrict_package') ?? '';
       if (activeRestrictPkg.isNotEmpty && activeRestrictPkg == pkg) {
         final appName = await UsageDataSaver.getAppName(pkg);
         CustomAppModel? ramApp;
@@ -243,8 +366,9 @@ void onStart(ServiceInstance service) async {
             break;
           }
         }
-        final delaySeconds = ramApp != null && ramApp.countdown > 0 ? ramApp.countdown : 10;
-        
+        final delaySeconds =
+            ramApp != null && ramApp.countdown > 0 ? ramApp.countdown : 10;
+
         FlutterOverlayWindow.shareData({
           'overlayType': 'restrict',
           'packageName': pkg,
@@ -253,11 +377,12 @@ void onStart(ServiceInstance service) async {
         });
       }
     } else if (type == 'block' && activeType == 'block') {
-      final activeBlockPkg = await UsageDataSaver.getActiveBlockedPackage() ?? '';
+      final activeBlockPkg =
+          await UsageDataSaver.getActiveBlockedPackage() ?? '';
       if (activeBlockPkg.isNotEmpty && activeBlockPkg == pkg) {
         final appName = await UsageDataSaver.getActiveBlockedName() ?? '';
         final limitMs = await UsageDataSaver.getLimit(pkg);
-        
+
         FlutterOverlayWindow.shareData({
           'overlayType': 'block',
           'packageName': pkg,
@@ -268,6 +393,7 @@ void onStart(ServiceInstance service) async {
     }
   });
 
-  await LimitMonitor.checkAndConfigureServiceState();
-  LimitMonitor.scheduleMidnightReset();
+  // Coordinator start aur midnight reset setup
+  await AppLimitCoordinator.checkAndConfigureServiceState();
+  AppLimitCoordinator.scheduleMidnightReset();
 }

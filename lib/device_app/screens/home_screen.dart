@@ -5,6 +5,7 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:testproject/device_app/screens/device_apps_screen.dart';
 import 'package:testproject/device_app/controller/home_controller.dart';
 import 'package:testproject/device_app/screens/notifications_screen.dart';
+import 'package:testproject/device_app/screens/reminder_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -353,6 +354,15 @@ class HomeScreen extends StatelessWidget {
                         children: [
                           IconButton(
                             icon: const Icon(
+                              Icons.alarm_rounded, 
+                              color: Colors.white70, 
+                              size: 26
+                            ),
+                            tooltip: "Reminder Settings",
+                            onPressed: () => Get.to(() => const ReminderScreen()),
+                          ),
+                          IconButton(
+                            icon: const Icon(
                               Icons.notifications_none_rounded, 
                               color: Colors.white70, 
                               size: 26
@@ -420,7 +430,7 @@ class HomeScreen extends StatelessWidget {
                             crossAxisCount: 4,
                             mainAxisSpacing: 20,
                             crossAxisSpacing: 20,
-                            childAspectRatio: 0.72,
+                            childAspectRatio: 0.65,
                           ),
                           itemCount: controller.desktopApps.length,
                           itemBuilder: (context, index) {
@@ -467,7 +477,7 @@ class HomeScreen extends StatelessWidget {
                                         ),
                                     ],
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 4),
                                   Text(
                                     app.name,
                                     style: const TextStyle(
@@ -661,7 +671,7 @@ class HomeScreen extends StatelessWidget {
                               crossAxisCount: 4,
                               mainAxisSpacing: 24,
                               crossAxisSpacing: 16,
-                              childAspectRatio: 0.72,
+                              childAspectRatio: 0.65,
                             ),
                             itemCount: controller.filteredApps.length,
                             itemBuilder: (context, index) {
