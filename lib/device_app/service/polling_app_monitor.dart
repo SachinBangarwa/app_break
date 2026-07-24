@@ -6,7 +6,6 @@ import '../localSaver/db_helper.dart';
 import '../localSaver/active_apps_manager.dart';
 import '../localSaver/custom_app_model.dart';
 import 'usage_helper.dart';
-import 'accessibility_app_monitor.dart';
 import 'overlay_helper.dart';
 
 /// Polling App Monitor:
@@ -38,6 +37,39 @@ class PollingAppMonitor {
   /// Polling state set karta hai (Active / Inactive)
   static void setPollingActive(bool active) {
     _isPollingActive = active;
+  }
+
+  /// Pure app session ko database aur memory me commit karta hai
+  /// (User ne app kitni der chalaya uska total count calculate karke SQLite aur RAM me update karta hai)
+  static Future<void> commitOpenSession(String pkg, int startTime, int endTime) async {
+    final duration = endTime - startTime;
+    if (duration <= 0) return;
+
+    CustomAppModel? app;
+    for (final a in ActiveAppsManager.activeAppsList) {
+      if (a.packageName == pkg) {
+        app = a;
+        break;
+      }
+    }
+
+    if (app != null) {
+      final startUsage = _sessionStartUsage[pkg] ?? app.todayUsage;
+      final finalUsage = startUsage + duration;
+
+      print("[PollingAppMonitor] Committing session for $pkg: duration ${duration / 1000}s, final usage ${finalUsage / 1000}s");
+
+      // Memory (RAM) list ko update karta hai
+      ActiveAppsManager.updateApp(
+        packageName: pkg,
+        displayName: app.displayName,
+        isSystemApp: app.isSystemApp,
+        todayUsage: finalUsage,
+        isServiceIsolate: true,
+      );
+    }
+
+    _sessionStartUsage.remove(pkg);
   }
 
   /// 4-Second Periodic Polling Loop ko shuru karta hai
@@ -76,17 +108,6 @@ class PollingAppMonitor {
   /// Har 4 second cycle me OS events fetch aur process karta hai
   static Future<void> runPollCycle() async {
     final prefs = await SharedPreferences.getInstance();
-    final isAccessibilityEnabled =
-        prefs.getBool('is_accessibility_enabled') ?? false;
-
-    // Failsafe: Agar accessibility enable ho gayi hai toh polling turant stop kar deta hai
-    if (isAccessibilityEnabled) {
-      print(
-        "🛡️ [PollingAppMonitor] Failsafe: Accessibility is ENABLED -> Stopping Polling Loop.",
-      );
-      stopPollingLoop();
-      return;
-    }
 
     bool? hasPermission = await UsageStats.checkUsagePermission();
     if (hasPermission != true) {
@@ -191,7 +212,7 @@ class PollingAppMonitor {
           print(
             "🎯 [TRACK] ⏳ [SESSION_CLOSED] Closing session for $openApp -> Active Session Duration: ${duration / 1000}s",
           );
-          await AccessibilityAppMonitor.commitOpenSession(
+          await commitOpenSession(
             openApp,
             openAppStart,
             eventTime,
@@ -352,7 +373,7 @@ class PollingAppMonitor {
       if (isScreenOffOrShutdown) {
         print("🎯 [TRACK] 🔒 [SCREEN_OFF] Committing session for $openApp");
         if (openApp != null && openApp.isNotEmpty) {
-          await AccessibilityAppMonitor.commitOpenSession(
+          await commitOpenSession(
             openApp,
             openAppStart,
             systemEventTime,

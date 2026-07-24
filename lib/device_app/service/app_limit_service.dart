@@ -9,7 +9,6 @@ import '../localSaver/db_helper.dart';
 import '../localSaver/active_apps_manager.dart';
 import '../localSaver/custom_app_model.dart';
 import 'app_limit_coordinator.dart';
-import 'accessibility_app_monitor.dart';
 import 'polling_app_monitor.dart';
 
 /// App Limit Service:
@@ -246,7 +245,6 @@ void onStart(ServiceInstance service) async {
 
         await AppDbHelper.instance.updateAppExtraLimit(pkg, newExtraMs);
 
-        AccessibilityAppMonitor.setAllowedExtendWindow(pkg, extendMinutes);
         PollingAppMonitor.setAllowedExtendWindow(pkg, extendMinutes);
 
         service.invoke('syncActiveApp', {
@@ -262,18 +260,7 @@ void onStart(ServiceInstance service) async {
           'icon': existing?.icon,
         });
 
-        final prefs = await SharedPreferences.getInstance();
-        final isAccessibilityEnabled =
-            prefs.getBool('is_accessibility_enabled') ?? false;
-
-        if (isAccessibilityEnabled) {
-          await AccessibilityAppMonitor.scheduleAccessibilityCheck(
-            pkg,
-            DateTime.now().millisecondsSinceEpoch,
-          );
-        } else {
-          await AppLimitCoordinator.checkAndConfigureServiceState();
-        }
+        await AppLimitCoordinator.checkAndConfigureServiceState();
       }
     }
   });
@@ -284,34 +271,7 @@ void onStart(ServiceInstance service) async {
     await AppLimitCoordinator.checkAndConfigureServiceState();
   });
 
-  // Accessibility Native Service dwara foreground package change event listener
-  service.on('packageNameChanged').listen((event) async {
-    final newPackage = event?['packageName'] as String? ?? '';
-    print(
-      "[AppLimitService] packageNameChanged: foreground app is now -> $newPackage",
-    );
-
-    final prefs = await SharedPreferences.getInstance();
-    final isAccessibilityEnabled =
-        prefs.getBool('is_accessibility_enabled') ?? false;
-
-    if (isAccessibilityEnabled) {
-      await AccessibilityAppMonitor.handleAccessibilityPackageChange(
-        newPackage,
-      );
-    }
-  });
-
-  // Accessibility Service toggle (ON/OFF) status change listener
-  service.on('accessibilityStatusChanged').listen((event) async {
-    final enabled = event?['enabled'] as bool? ?? true;
-    print("[AppLimitService] accessibilityStatusChanged: enabled = $enabled");
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_accessibility_enabled', enabled);
-
-    await AppLimitCoordinator.checkAndConfigureServiceState();
-  });
+  // Accessibility event listeners removed (now using only 4-second polling loop)
 
   // UI dwara full active apps list sync request listener
   service.on('requestActiveAppsSync').listen((event) async {
