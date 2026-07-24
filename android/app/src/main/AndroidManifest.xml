@@ -49,8 +49,11 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <!-- Category home and default are commented out to make it a normal app instead of launcher app.
+                     Uncomment them if you want this app to act as the home launcher.
                 <category android:name="android.intent.category.HOME"/>
                 <category android:name="android.intent.category.DEFAULT"/>
+                -->
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

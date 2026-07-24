@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../localSaver/localSaver.dart';
+import '../localSaver/active_apps_manager.dart';
 
 const Duration shareDataDelay = Duration(milliseconds: 400);
 
@@ -65,6 +66,15 @@ Future<void> triggerSessionPromptOverlay(
   int sessionLimitMs = 0,
   int sessionUsageMs = 0,
 }) async {
+  final hasLimit = ActiveAppsManager.activeAppsList.any(
+    (app) => app.packageName == activePackage && app.todayLimit > 0,
+  );
+
+  if (!hasLimit) {
+    print("[AppLimitServiceOverlay] Skipping session prompt for $activePackage because no daily limit is set.");
+    return;
+  }
+
   final isOverlayActive = await FlutterOverlayWindow.isActive();
 
   if (!isOverlayActive) {
