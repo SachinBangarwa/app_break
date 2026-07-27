@@ -326,7 +326,7 @@ class MyAccessibilityService : AccessibilityService() {
             }
             ActiveAppsManager.reminderOptionSetting = reminderOpt
         } catch (e: Exception) {
-            android.util.
+            android.util.Log.e("FLOW_DEBUG", "Error reloading reminder option: ${e.message}")
         }
     }
 

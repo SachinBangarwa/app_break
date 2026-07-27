@@ -32,7 +32,6 @@ object NativeOverlayManager {
                 currentOverlayView = null
             }
         } catch (e: Exception) {
-            android.util.
         }
     }
 

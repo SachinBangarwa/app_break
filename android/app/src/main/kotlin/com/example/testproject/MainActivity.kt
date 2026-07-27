@@ -79,12 +79,9 @@ class MainActivity : FlutterActivity() {
                                     pendingIntent.send(this, 0, null)
                                 }
                                 launched = true
-                                android.util.
                             } catch (e: Exception) {
-                                android.util.
                             }
                         } else {
-                            android.util.
                         }
                     }
 
@@ -95,10 +92,8 @@ class MainActivity : FlutterActivity() {
                             if (launchIntent != null) {
                                 startActivity(launchIntent)
                                 launched = true
-                                android.util.
                             }
                         } catch (e: Exception) {
-                            android.util.
                         }
                     }
 
