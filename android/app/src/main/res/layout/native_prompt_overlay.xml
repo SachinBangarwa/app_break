@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF">
+
+    <!-- MAIN PROMPT CONTAINER -->
+    <LinearLayout
+        android:id="@+id/prompt_main_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="24dp">
+
+        <!-- Top Spacing -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="2" />
+
+        <!-- Center Icon: Heart -->
+        <ImageView
+            android:id="@+id/prompt_icon"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:src="@android:drawable/btn_star_big_on"
+            android:tint="#111111"
+            android:contentDescription="Heart Icon" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="Do you really need it\nnow?"
+            android:textColor="#111111"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.2" />
+
+        <TextView
+            android:id="@+id/prompt_subtext"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Time spent: 0m"
+            android:textColor="#666666"
+            android:textSize="16sp"
+            android:gravity="center" />
+
+        <!-- Bottom Spacing -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="3" />
+
+        <!-- Button: Close App (Primary Black Button) -->
+        <Button
+            android:id="@+id/btn_prompt_close"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/btn_default"
+            android:text="Close app"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Button: Continue in App (Secondary Text Button) -->
+        <Button
+            android:id="@+id/btn_prompt_continue"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:text="Continue in app"
+            android:textColor="#111111"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+    </LinearLayout>
+
+    <!-- BOTTOM SHEET CONTAINER (Initially Hidden) -->
+    <LinearLayout
+        android:id="@+id/bottom_sheet_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#EEEEEE"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:visibility="gone">
+
+        <!-- Handle Indicator -->
+        <View
+            android:layout_width="40dp"
+            android:layout_height="4dp"
+            android:background="#CCCCCC"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="How long do you need it?"
+            android:textColor="#111111"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Session Selection Grid/Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+
+            <Button
+                android:id="@+id/btn_opt_1min"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="1 min"
+                android:textColor="#111111"
+                android:textSize="15sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_opt_5min"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="5 min"
+                android:textColor="#111111"
+                android:textSize="15sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_opt_10min"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="10 min"
+                android:textColor="#111111"
+                android:textSize="15sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_opt_15min"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="15 min"
+                android:textColor="#111111"
+                android:textSize="15sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_opt_30min"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="30 min"
+                android:textColor="#111111"
+                android:textSize="15sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_opt_cancel"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Cancel"
+                android:textColor="#FF3B30"
+                android:textSize="15sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

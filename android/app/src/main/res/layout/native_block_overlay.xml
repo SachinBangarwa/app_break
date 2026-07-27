@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="24dp">
+
+    <!-- Top Spacing -->
+    <View
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="2" />
+
+    <!-- Center Icon: Hourglass (Standard android icon used as fallback) -->
+    <ImageView
+        android:id="@+id/block_icon"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:src="@android:drawable/ic_menu_recent_history"
+        android:tint="#D32F2F"
+        android:contentDescription="Hourglass Icon" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="Time Limit Reached"
+        android:textColor="#111111"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textAlignment="center" />
+
+    <TextView
+        android:id="@+id/block_subtext"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="You have used this app today.\nPlease take a break!"
+        android:textColor="#666666"
+        android:textSize="16sp"
+        android:gravity="center" />
+
+    <!-- Bottom Spacing -->
+    <View
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="3" />
+
+    <!-- Primary Button: Close App (Sleek black button with rounded corners) -->
+    <Button
+        android:id="@+id/btn_close_app"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@android:drawable/btn_default"
+        android:text="Close app"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+</LinearLayout>

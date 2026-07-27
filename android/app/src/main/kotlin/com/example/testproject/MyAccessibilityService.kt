@@ -1,33 +1,49 @@
 package com.example.testproject
 
 import android.accessibilityservice.AccessibilityService
-import android.view.accessibility.AccessibilityEvent
-import android.util.Log
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.BroadcastReceiver
 import android.content.IntentFilter
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.accessibility.AccessibilityEvent
 import id.flutter.flutter_background_service.FlutterBackgroundServicePlugin
 import org.json.JSONObject
 
 /**
- * Android Accessibility Service:
- * Jab user Accessibility permission enable karta hai, tab ye service active ho jati hai.
- * Ye service real-time me window state changes (app opening/closing) ko observe karti hai.
+ * MyAccessibilityService:
+ * Yeh class Android Accessibility Service hai jo screen state changes ko observe karti hai.
+ * Jab ye active hoti hai, toh bina kisi background Dart service ke, ye completely native Kotlin me
+ * limits check aur overlays window draw karti hai.
  */
 class MyAccessibilityService : AccessibilityService() {
 
     private var screenReceiver: BroadcastReceiver? = null
+    private lateinit var dbHelper: AppDbHelper
+    private val handler = Handler(Looper.getMainLooper())
 
-    // Service initialize hone par Screen Off event listener set karta hai
+    // Currently tracked app details in memory
+    private var openApp: String? = null
+    private var openAppStart: Long = 0
+
+    // Timer runnables for daily limit and session prompt
+    private val blockRunnable = Runnable { checkAndTriggerOverlay(true) }
+    private val promptRunnable = Runnable { checkAndTriggerOverlay(false) }
+
     override fun onCreate() {
         super.onCreate()
         Log.d("MyAccessibilityService", "Service Created")
+        dbHelper = AppDbHelper(this) // SQLite helper ko initialize karenge
+
+        // Screen Off hone par active session ka time database me save karne ke liye receiver
         try {
             screenReceiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     if (intent?.action == Intent.ACTION_SCREEN_OFF) {
                         Log.d("MyAccessibilityService", "Screen Off Detected")
+                        // Screen off hone par session close (package = empty)
                         handlePackageChanged("")
                     }
                 }
@@ -39,7 +55,6 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
 
-    // Service connect hone par SharedPreferences me accessibility status true save karta hai
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d("MyAccessibilityService", "Service Connected")
@@ -47,14 +62,329 @@ class MyAccessibilityService : AccessibilityService() {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             prefs.edit().putBoolean("flutter.is_accessibility_enabled", true).apply()
 
-            notifyAccessibilityStatusChanged()
+            // Default home launcher package detect karke prefs me save karenge
+            try {
+                val intent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                }
+                val resolveInfo = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+                val launcherPackage = resolveInfo?.activityInfo?.packageName
+                if (launcherPackage != null && launcherPackage.isNotEmpty()) {
+                    prefs.edit().putString("flutter.default_launcher_package", launcherPackage).apply()
+                    Log.d("MyAccessibilityService", "Saved default launcher: $launcherPackage")
+                }
+            } catch (ex: Exception) {
+                Log.e("MyAccessibilityService", "Error getting default launcher: ${ex.message}")
+            }
+
+            // SQLite database se active limits loaded apps ko load karenge
+            reloadActiveAppsList()
+
+            // Safe check for flutter.reminder_option (Flutter saves integers as Long, causing ClassCastException with getInt)
+            val reminderVal = prefs.all["flutter.reminder_option"]
+            val reminderOpt = when (reminderVal) {
+                is Int -> reminderVal
+                is Long -> reminderVal.toInt()
+                is Float -> reminderVal.toInt()
+                is Double -> reminderVal.toInt()
+                is String -> reminderVal.toIntOrNull() ?: 0
+                else -> 0 // Default to 0 (Always Ask) to match Flutter default fallback
+            }
+            ActiveAppsManager.reminderOptionSetting = reminderOpt
+            Log.d("MyAccessibilityService", "Loaded reminder option natively: $reminderOpt")
+
+            notifyAccessibilityStatusChanged(true)
         } catch (e: Exception) {
             Log.e("MyAccessibilityService", "Error setting active status: ${e.message}")
         }
     }
 
-    // Dart Background Service ko Accessibility status (ON/OFF) change hone ka notify karta hai
-    private fun notifyAccessibilityStatusChanged(enabled: Boolean = true) {
+    // Window configuration change hone par call hota hai (e.g. app switch)
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val packageName = event.packageName?.toString() ?: ""
+            Log.d("MyAccessibilityService", "Window State Changed: $packageName")
+            handlePackageChanged(packageName)
+        }
+    }
+
+    /**
+     * handlePackageChanged:
+     * App switch hone par calculations aur state transitions perform karta hai.
+     * (Pichhle app ka timing commit karna, naye app ki limits check karna).
+     */
+    private fun handlePackageChanged(packageName: String) {
+        val now = System.currentTimeMillis()
+        val prevApp = openApp
+        val prevStart = openAppStart
+
+        // 0. Agar user same app par hi kaam kar raha hai (window event same app ka hai)
+        if (prevApp == packageName) {
+            if (packageName.isNotEmpty() && !isIgnoredPackage(packageName)) {
+                val duration = now - prevStart
+                if (duration > 0) {
+                    reloadActiveAppsList()
+                    val app = ActiveAppsManager.activeAppsList.find { it.packageName == packageName }
+                    if (app != null) {
+                        app.todayUsage += duration
+                        dbHelper.updateAppUsage(packageName, app.todayUsage)
+                        openAppStart = now // reset start time to now
+                        checkLimitsAndSchedule(packageName, app)
+                    }
+                }
+            }
+            return
+        }
+
+        // 1. Pichhle app ka session calculate aur SQLite me save karenge
+        if (prevApp != null && prevApp.isNotEmpty() && prevApp != packageName) {
+            // TRANSITION ARTIFACT FILTER:
+            // Agar pichhla app tracked tha aur naya focus event humare khud ke app (com.example.testproject) ka hai
+            // aur ye switch 1.5 seconds (1500ms) se kam me hua hai, toh ye system transition noise hai.
+            // Hum ise ignore karenge taaki user ki live tracking timer cancel na ho.
+            if (packageName == "com.example.testproject" && (now - prevStart) < 1500) {
+                Log.d("MyAccessibilityService", "Filtered transition artifact back to own app: $packageName within ${now - prevStart} ms")
+                return
+            }
+
+            val duration = now - prevStart
+            if (duration > 0) {
+                val app = ActiveAppsManager.activeAppsList.find { it.packageName == prevApp }
+                if (app != null) {
+                    app.todayUsage += duration
+                    dbHelper.updateAppUsage(prevApp, app.todayUsage)
+                    Log.d("MyAccessibilityService", "Committed session for $prevApp: $duration ms. Total today: ${app.todayUsage} ms")
+                }
+            }
+            // Purane delay check callbacks ko cancel karenge
+            handler.removeCallbacks(blockRunnable)
+            handler.removeCallbacks(promptRunnable)
+            openApp = null
+            openAppStart = 0
+        }
+
+        // 2. Naye app ke liye limit checks aur scheduling chalenge
+        if (packageName.isNotEmpty() && !isIgnoredPackage(packageName)) {
+            // DB se update active app list read karenge (taaki Flutter UI ke changes refresh ho sakein)
+            reloadActiveAppsList()
+
+            val trackedApp = ActiveAppsManager.activeAppsList.find { it.packageName == packageName }
+            if (trackedApp != null) {
+                openApp = packageName
+                openAppStart = now
+                
+                // Timers aur checking trigger karenge
+                checkLimitsAndSchedule(packageName, trackedApp)
+            }
+        }
+    }
+
+    /**
+     * checkLimitsAndSchedule:
+     * Naye app ke daily limits, presets aur custom session checks runs karta hai.
+     */
+    private fun checkLimitsAndSchedule(packageName: String, app: CustomAppModel) {
+        val now = System.currentTimeMillis()
+        val allowedLimit = app.todayLimit + app.extraLimit
+        val todayUsage = app.todayUsage
+
+        Log.d("MyAccessibilityService", "🎯 [TRACK] checkLimitsAndSchedule for $packageName | Daily Limit: $allowedLimit ms | Today Usage: $todayUsage ms")
+
+        // A. Daily Limit Block Check
+        if (app.todayLimit > 0 && todayUsage >= allowedLimit) {
+            Log.d("MyAccessibilityService", "🎯 [TRACK] Daily limit EXHAUSTED for $packageName! Showing block overlay.")
+            NativeOverlayManager.showBlockOverlay(this, packageName, (todayUsage / 60000).toInt()) {
+                goHome()
+            }
+            return
+        }
+
+        // B. Session limit check logic (Auto vs Custom)
+        val reminderOpt = ActiveAppsManager.reminderOptionSetting
+        Log.d("MyAccessibilityService", "🎯 [TRACK] loaded reminderOptionSetting = $reminderOpt")
+        var isSessionPromptNeeded = false
+        var sessionRemainingMs = Long.MAX_VALUE
+
+        if (reminderOpt == -1) {
+            Log.d("MyAccessibilityService", "🎯 [TRACK] reminderOpt is -1 (No Reminder) -> direct session, no prompt.")
+        } else if (reminderOpt > 0) {
+            // Auto preset limit set hai
+            val preSetMs = reminderOpt * 60000L
+            var sessionStart = ActiveAppsManager.sessionStartTimeMap[packageName] ?: 0L
+            Log.d("MyAccessibilityService", "🎯 [TRACK] Auto session check - preSetMs: $preSetMs, sessionStart: $sessionStart")
+            if (sessionStart <= 0L) {
+                ActiveAppsManager.sessionLimitMap[packageName] = preSetMs
+                ActiveAppsManager.sessionStartTimeMap[packageName] = now
+                sessionStart = now
+                Log.d("MyAccessibilityService", "🎯 [TRACK] Initialized new Auto session start time: $now")
+            }
+            val elapsedSession = now - sessionStart
+            Log.d("MyAccessibilityService", "🎯 [TRACK] Auto session - elapsedSession: $elapsedSession ms")
+            if (elapsedSession >= preSetMs) {
+                isSessionPromptNeeded = true
+                Log.d("MyAccessibilityService", "🎯 [TRACK] Auto session expired! Prompt needed.")
+            } else {
+                sessionRemainingMs = preSetMs - elapsedSession
+                Log.d("MyAccessibilityService", "🎯 [TRACK] Auto session active. remaining: $sessionRemainingMs ms")
+            }
+        } else {
+            // Custom session time limit set hai
+            val sessionLimit = ActiveAppsManager.sessionLimitMap[packageName] ?: 0L
+            val sessionStart = ActiveAppsManager.sessionStartTimeMap[packageName] ?: 0L
+            val elapsedSession = if (sessionStart > 0L) (now - sessionStart) else 0L
+            Log.d("MyAccessibilityService", "🎯 [TRACK] Custom session check - sessionLimit: $sessionLimit ms, sessionStart: $sessionStart, elapsedSession: $elapsedSession ms")
+
+            if (sessionLimit > 0L && sessionStart > 0L) {
+                if (elapsedSession >= sessionLimit) {
+                    isSessionPromptNeeded = true
+                    Log.d("MyAccessibilityService", "🎯 [TRACK] Custom session expired! Prompt needed.")
+                } else {
+                    sessionRemainingMs = sessionLimit - elapsedSession
+                    Log.d("MyAccessibilityService", "🎯 [TRACK] Custom session active. remaining: $sessionRemainingMs ms")
+                }
+            } else {
+                // Agar session mapping blank hai, toh prompt visual block dikhana padega
+                isSessionPromptNeeded = true
+                Log.d("MyAccessibilityService", "🎯 [TRACK] Custom session blank -> Prompt needed to select session limit.")
+            }
+        }
+
+        Log.d("MyAccessibilityService", "🎯 [TRACK] Decision - isSessionPromptNeeded = $isSessionPromptNeeded, sessionRemainingMs = $sessionRemainingMs")
+        // Agar session timeout ho gaya hai, prompt overlay bottom sheet load karenge
+        if (isSessionPromptNeeded) {
+            NativeOverlayManager.showPromptOverlay(this, packageName, (todayUsage / 60000).toInt(),
+                onCloseApp = { goHome() },
+                onSelectSession = { minutes ->
+                    val limitMs = minutes.toLong() * 60000L
+                    ActiveAppsManager.sessionLimitMap[packageName] = limitMs
+                    ActiveAppsManager.sessionStartTimeMap[packageName] = System.currentTimeMillis()
+                    
+                    // Dobara checking schedule karenge
+                    reloadActiveAppsList()
+                    val reTracked = ActiveAppsManager.activeAppsList.find { it.packageName == packageName }
+                    if (reTracked != null) {
+                        checkLimitsAndSchedule(packageName, reTracked)
+                    }
+                }
+            )
+            return
+        }
+
+        // C. Handlers ke dynamic single-shot scheduling set karenge
+        handler.removeCallbacks(blockRunnable)
+        handler.removeCallbacks(promptRunnable)
+
+        // 1. Daily limit timer schedule karenge
+        val dailyRemainingMs = allowedLimit - todayUsage
+        if (dailyRemainingMs > 0) {
+            handler.postDelayed(blockRunnable, dailyRemainingMs)
+        }
+
+        // 2. Session limit timer schedule karenge
+        if (sessionRemainingMs > 0 && sessionRemainingMs != Long.MAX_VALUE) {
+            handler.postDelayed(promptRunnable, sessionRemainingMs)
+        }
+    }
+
+    /**
+     * checkAndTriggerOverlay:
+     * Timer fire hone par running usage save karke overlay draw karta hai.
+     */
+    private fun checkAndTriggerOverlay(isBlockMode: Boolean) {
+        val currentApp = openApp ?: return
+        val app = ActiveAppsManager.activeAppsList.find { it.packageName == currentApp } ?: return
+        val now = System.currentTimeMillis()
+
+        // Usage update karenge
+        val duration = now - openAppStart
+        if (duration > 0) {
+            app.todayUsage += duration
+            dbHelper.updateAppUsage(currentApp, app.todayUsage)
+            openAppStart = now
+        }
+
+        val spentMinutes = (app.todayUsage / 60000).toInt()
+
+        if (isBlockMode) {
+            NativeOverlayManager.showBlockOverlay(this, currentApp, spentMinutes) {
+                goHome()
+            }
+        } else {
+            // Session limit finish: remove details
+            ActiveAppsManager.sessionLimitMap.remove(currentApp)
+            ActiveAppsManager.sessionStartTimeMap.remove(currentApp)
+
+            NativeOverlayManager.showPromptOverlay(this, currentApp, spentMinutes,
+                onCloseApp = { goHome() },
+                onSelectSession = { minutes ->
+                    val limitMs = minutes.toLong() * 60000L
+                    ActiveAppsManager.sessionLimitMap[currentApp] = limitMs
+                    ActiveAppsManager.sessionStartTimeMap[currentApp] = System.currentTimeMillis()
+                    
+                    reloadActiveAppsList()
+                    val reTracked = ActiveAppsManager.activeAppsList.find { it.packageName == currentApp }
+                    if (reTracked != null) {
+                        checkLimitsAndSchedule(currentApp, reTracked)
+                    }
+                }
+            )
+        }
+    }
+
+    private fun reloadActiveAppsList() {
+        val list = dbHelper.getActiveAppsFromDb()
+        ActiveAppsManager.activeAppsList.clear()
+        ActiveAppsManager.activeAppsList.addAll(list)
+
+        try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val reminderVal = prefs.all["flutter.reminder_option"]
+            val reminderOpt = when (reminderVal) {
+                is Int -> reminderVal
+                is Long -> reminderVal.toInt()
+                is Float -> reminderVal.toInt()
+                is Double -> reminderVal.toInt()
+                is String -> reminderVal.toIntOrNull() ?: 0
+                else -> 0 // Default to 0 (Always Ask)
+            }
+            ActiveAppsManager.reminderOptionSetting = reminderOpt
+        } catch (e: Exception) {
+            android.util.Log.e("MyAccessibilityService", "Error reloading reminder option: ${e.message}")
+        }
+    }
+
+    private fun goHome() {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(homeIntent)
+    }
+
+    // System utility tools (system package checking filters)
+    private fun isIgnoredPackage(pkg: String): Boolean {
+        if (pkg.isEmpty()) return true
+        val lowerPkg = pkg.lowercase()
+        if (lowerPkg == "android") return true
+        if (lowerPkg == "com.example.testproject") return true
+        if (lowerPkg.contains("launcher") ||
+            lowerPkg.contains("home") ||
+            lowerPkg.contains("systemui") ||
+            lowerPkg.contains("settings") ||
+            lowerPkg.contains("packageinstaller") ||
+            lowerPkg.contains("permissioncontroller") ||
+            lowerPkg.contains("inputmethod") ||
+            lowerPkg.contains("keyboard") ||
+            lowerPkg.contains("ime")
+        ) {
+            return true
+        }
+        return false
+    }
+
+    private fun notifyAccessibilityStatusChanged(enabled: Boolean) {
         try {
             val json = JSONObject()
             json.put("method", "accessibilityStatusChanged")
@@ -62,42 +392,8 @@ class MyAccessibilityService : AccessibilityService() {
             args.put("enabled", enabled)
             json.put("args", args)
             FlutterBackgroundServicePlugin.servicePipe.invoke(json)
-            Log.d("MyAccessibilityService", "Invoked accessibilityStatusChanged event with enabled=$enabled")
         } catch (e: Exception) {
-            Log.e("MyAccessibilityService", "Error invoking accessibilityStatusChanged: ${e.message}")
-        }
-    }
-
-    // Jab bhi screen par naya app ya window open hoti hai, ye event trigger hota hai
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
-
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val packageName = event.packageName?.toString() ?: ""
-            Log.d("MyAccessibilityService", "Window State Changed: $packageName")
-            println("--- [Accessibility Service] Active Package: $packageName ---")
-
-            handlePackageChanged(packageName)
-        }
-    }
-
-    // Active foreground app change hone par Dart Isolate ko IPC method call (packageNameChanged) dwara notify karta hai
-    private fun handlePackageChanged(packageName: String) {
-        try {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            prefs.edit().putString("flutter.active_foreground_package", packageName).apply()
-
-            val json = JSONObject()
-            json.put("method", "packageNameChanged")
-
-            val args = JSONObject()
-            args.put("packageName", packageName)
-            json.put("args", args)
-
-            FlutterBackgroundServicePlugin.servicePipe.invoke(json)
-            Log.d("MyAccessibilityService", "Invoked packageNameChanged event with: $packageName")
-        } catch (e: Exception) {
-            Log.e("MyAccessibilityService", "Error handling package change: ${e.message}")
+            Log.e("MyAccessibilityService", "Error notifying status change: ${e.message}")
         }
     }
 
@@ -105,30 +401,24 @@ class MyAccessibilityService : AccessibilityService() {
         Log.d("MyAccessibilityService", "Service Interrupted")
     }
 
-    // Service disconnect hone par accessibility status false karta hai aur Dart side ko notify karta hai
     override fun onUnbind(intent: Intent?): Boolean {
         Log.d("MyAccessibilityService", "Service Unbound")
+        handler.removeCallbacksAndMessages(null)
+        NativeOverlayManager.removeOverlay()
         try {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             prefs.edit().putBoolean("flutter.is_accessibility_enabled", false).apply()
-
-            val json = JSONObject()
-            json.put("method", "packageNameChanged")
-            val args = JSONObject()
-            args.put("packageName", "")
-            json.put("args", args)
-            FlutterBackgroundServicePlugin.servicePipe.invoke(json)
-
             notifyAccessibilityStatusChanged(false)
         } catch (e: Exception) {
-            Log.e("MyAccessibilityService", "Error setting inactive status: ${e.message}")
+            Log.e("MyAccessibilityService", "Error unbinding status: ${e.message}")
         }
         return super.onUnbind(intent)
     }
 
-    // Service destroy hone par screen receiver unregister karta hai
     override fun onDestroy() {
         Log.d("MyAccessibilityService", "Service Destroyed")
+        handler.removeCallbacksAndMessages(null)
+        NativeOverlayManager.removeOverlay()
         try {
             if (screenReceiver != null) {
                 unregisterReceiver(screenReceiver)
@@ -136,22 +426,6 @@ class MyAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e("MyAccessibilityService", "Error unregistering receiver: ${e.message}")
         }
-        try {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            prefs.edit().putBoolean("flutter.is_accessibility_enabled", false).apply()
-
-            val json = JSONObject()
-            json.put("method", "packageNameChanged")
-            val args = JSONObject()
-            args.put("packageName", "")
-            json.put("args", args)
-            FlutterBackgroundServicePlugin.servicePipe.invoke(json)
-
-            notifyAccessibilityStatusChanged()
-        } catch (e: Exception) {
-            Log.e("MyAccessibilityService", "Error setting inactive status: ${e.message}")
-        }
-
         super.onDestroy()
     }
 }

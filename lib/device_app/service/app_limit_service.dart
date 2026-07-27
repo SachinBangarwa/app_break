@@ -150,6 +150,8 @@ void onStart(ServiceInstance service) async {
           icon: iconBytes,
           isServiceIsolate: true,
         );
+
+        await AppLimitCoordinator.checkAndConfigureServiceState();
       }
     }
   });
