@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:installed_apps/installed_apps.dart';
+import 'package:testproject/device_app/localSaver/active_apps_manager.dart';
 
 class OverlayWindow extends StatefulWidget {
   final String initialOverlayType;
@@ -244,9 +245,16 @@ class _OverlayWindowState extends State<OverlayWindow> {
                       height: 48,
                       child: TextButton(
                         onPressed: () {
-                          setState(() {
-                            _showBottomSheet = true;
-                          });
+                          final opt = ActiveAppsManager.reminderOptionSetting;
+                          if (opt == -1) {
+                            _selectSessionLimit(-1);
+                          } else if (opt > 0) {
+                            _selectSessionLimit(opt);
+                          } else {
+                            setState(() {
+                              _showBottomSheet = true;
+                            });
+                          }
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.black,

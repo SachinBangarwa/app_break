@@ -107,6 +107,9 @@ class MyAccessibilityService : AccessibilityService() {
      * (Pichhle app ka timing commit karna, naye app ki limits check karna).
      */
     private fun handlePackageChanged(packageName: String) {
+        if (NativeOverlayManager.activeOverlayPackage == packageName) {
+            return
+        }
         val now = System.currentTimeMillis()
         val prevApp = openApp
         val prevStart = openAppStart
@@ -147,6 +150,11 @@ class MyAccessibilityService : AccessibilityService() {
                     dbHelper.updateAppUsage(prevApp, app.todayUsage)
                 }
             }
+            // Clear session mapping if in "Always Show" mode so it prompts again on next open
+            if (ActiveAppsManager.reminderOptionSetting == -1) {
+                ActiveAppsManager.sessionStartTimeMap.remove(prevApp)
+                ActiveAppsManager.sessionLimitMap.remove(prevApp)
+            }
             // Purane delay check callbacks ko cancel karenge
             handler.removeCallbacks(blockRunnable)
             handler.removeCallbacks(promptRunnable)
@@ -183,6 +191,10 @@ class MyAccessibilityService : AccessibilityService() {
         // A. Daily Limit Block Check
         if (app.todayLimit > 0 && todayUsage >= allowedLimit) {
             NativeOverlayManager.showBlockOverlay(this, packageName, (todayUsage / 60000).toInt()) {
+                openApp = null
+                openAppStart = 0
+                handler.removeCallbacks(blockRunnable)
+                handler.removeCallbacks(promptRunnable)
                 goHome()
             }
             return
@@ -194,6 +206,14 @@ class MyAccessibilityService : AccessibilityService() {
         var sessionRemainingMs = Long.MAX_VALUE
 
         if (reminderOpt == -1) {
+            // Always Show mode: check if session is already active (meaning bypassed)
+            val sessionStart = ActiveAppsManager.sessionStartTimeMap[packageName] ?: 0L
+            if (sessionStart <= 0L) {
+                isSessionPromptNeeded = true
+            } else {
+                isSessionPromptNeeded = false
+                sessionRemainingMs = Long.MAX_VALUE
+            }
         } else if (reminderOpt > 0) {
             // Auto preset limit set hai
             val preSetMs = reminderOpt * 60000L
@@ -230,11 +250,22 @@ class MyAccessibilityService : AccessibilityService() {
         // Agar session timeout ho gaya hai, prompt overlay bottom sheet load karenge
         if (isSessionPromptNeeded) {
             NativeOverlayManager.showPromptOverlay(this, packageName, (todayUsage / 60000).toInt(),
-                onCloseApp = { goHome() },
+                onCloseApp = {
+                    openApp = null
+                    openAppStart = 0
+                    handler.removeCallbacks(blockRunnable)
+                    handler.removeCallbacks(promptRunnable)
+                    goHome()
+                },
                 onSelectSession = { minutes ->
-                    val limitMs = minutes.toLong() * 60000L
-                    ActiveAppsManager.sessionLimitMap[packageName] = limitMs
-                    ActiveAppsManager.sessionStartTimeMap[packageName] = System.currentTimeMillis()
+                    if (minutes == -1) {
+                        ActiveAppsManager.sessionLimitMap[packageName] = Long.MAX_VALUE
+                        ActiveAppsManager.sessionStartTimeMap[packageName] = System.currentTimeMillis()
+                    } else {
+                        val limitMs = minutes.toLong() * 60000L
+                        ActiveAppsManager.sessionLimitMap[packageName] = limitMs
+                        ActiveAppsManager.sessionStartTimeMap[packageName] = System.currentTimeMillis()
+                    }
                     
                     // Dobara checking schedule karenge
                     reloadActiveAppsList()
@@ -284,6 +315,10 @@ class MyAccessibilityService : AccessibilityService() {
 
         if (isBlockMode) {
             NativeOverlayManager.showBlockOverlay(this, currentApp, spentMinutes) {
+                openApp = null
+                openAppStart = 0
+                handler.removeCallbacks(blockRunnable)
+                handler.removeCallbacks(promptRunnable)
                 goHome()
             }
         } else {
@@ -292,11 +327,22 @@ class MyAccessibilityService : AccessibilityService() {
             ActiveAppsManager.sessionStartTimeMap.remove(currentApp)
 
             NativeOverlayManager.showPromptOverlay(this, currentApp, spentMinutes,
-                onCloseApp = { goHome() },
+                onCloseApp = {
+                    openApp = null
+                    openAppStart = 0
+                    handler.removeCallbacks(blockRunnable)
+                    handler.removeCallbacks(promptRunnable)
+                    goHome()
+                },
                 onSelectSession = { minutes ->
-                    val limitMs = minutes.toLong() * 60000L
-                    ActiveAppsManager.sessionLimitMap[currentApp] = limitMs
-                    ActiveAppsManager.sessionStartTimeMap[currentApp] = System.currentTimeMillis()
+                    if (minutes == -1) {
+                        ActiveAppsManager.sessionLimitMap[currentApp] = Long.MAX_VALUE
+                        ActiveAppsManager.sessionStartTimeMap[currentApp] = System.currentTimeMillis()
+                    } else {
+                        val limitMs = minutes.toLong() * 60000L
+                        ActiveAppsManager.sessionLimitMap[currentApp] = limitMs
+                        ActiveAppsManager.sessionStartTimeMap[currentApp] = System.currentTimeMillis()
+                    }
                     
                     reloadActiveAppsList()
                     val reTracked = ActiveAppsManager.activeAppsList.find { it.packageName == currentApp }
@@ -324,9 +370,13 @@ class MyAccessibilityService : AccessibilityService() {
                 is String -> reminderVal.toIntOrNull() ?: 0
                 else -> 0 // Default to 0 (Always Ask)
             }
+            val oldOption = ActiveAppsManager.reminderOptionSetting
             ActiveAppsManager.reminderOptionSetting = reminderOpt
+            if (oldOption != reminderOpt) {
+                ActiveAppsManager.sessionStartTimeMap.clear()
+                ActiveAppsManager.sessionLimitMap.clear()
+            }
         } catch (e: Exception) {
-            android.util.Log.e("FLOW_DEBUG", "Error reloading reminder option: ${e.message}")
         }
     }
 

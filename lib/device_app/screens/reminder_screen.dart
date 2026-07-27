@@ -16,7 +16,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
   bool _isLoading = true;
 
   final List<Map<String, dynamic>> _reminderOptions = const [
-    {'label': 'No reminder', 'value': -1},
+    {'label': 'Always show', 'value': -1},
     {'label': 'Always ask reminder time', 'value': 0},
     {'label': '1 min', 'value': 1},
     {'label': '3 min', 'value': 3},
@@ -75,7 +75,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
         title: const Text("Reminder Setting"),
         content: const Text(
           "Choose how App Break handles session reminders:\n\n"
-          "• No reminder: Disables session intent popups.\n"
+          "• Always show: Show overlay every time app is opened.\n"
           "• Always ask: Asks you how long you need the app every time.\n"
           "• Custom time (e.g. 5 min): Automatically applies the selected session duration.",
         ),

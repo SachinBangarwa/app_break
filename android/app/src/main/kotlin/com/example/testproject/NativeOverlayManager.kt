@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 object NativeOverlayManager {
     private var windowManager: WindowManager? = null
     private var currentOverlayView: View? = null
+    var activeOverlayPackage: String? = null // Tracks currently active overlay app
 
     /**
      * Kisi bhi chalu overlay view ko screen se safai se remove (delete) karta hai.
@@ -30,6 +31,7 @@ object NativeOverlayManager {
                 // WindowManager se view delete karenge
                 windowManager?.removeView(currentOverlayView)
                 currentOverlayView = null
+                activeOverlayPackage = null // Clear tracker
             }
         } catch (e: Exception) {
         }
@@ -47,6 +49,7 @@ object NativeOverlayManager {
     ) {
         // Pehle se chal rahe overlay ko remove karenge
         removeOverlay()
+        activeOverlayPackage = packageName
 
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -95,6 +98,7 @@ object NativeOverlayManager {
         onSelectSession: (minutes: Int) -> Unit
     ) {
         removeOverlay()
+        activeOverlayPackage = packageName
 
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -128,7 +132,10 @@ object NativeOverlayManager {
         // If a preset reminder is set, apply it immediately and close overlay. Otherwise, show selector list.
         btnContinue.setOnClickListener {
             val reminderOpt = ActiveAppsManager.reminderOptionSetting
-            if (reminderOpt > 0) {
+            if (reminderOpt == -1) {
+                removeOverlay()
+                onSelectSession(-1)
+            } else if (reminderOpt > 0) {
                 removeOverlay()
                 onSelectSession(reminderOpt)
             } else {

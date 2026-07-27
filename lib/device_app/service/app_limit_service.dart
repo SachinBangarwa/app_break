@@ -154,10 +154,13 @@ void onStart(ServiceInstance service) async {
     if (event != null) {
       final pkg = event['packageName'] as String?;
       final sessionMinutes = (event['sessionMinutes'] as int?) ?? 5;
-      final sessionMs = sessionMinutes * 60000;
       final now = DateTime.now().millisecondsSinceEpoch;
 
       if (pkg != null && pkg.isNotEmpty) {
+        final sessionMs = sessionMinutes == -1
+            ? -1
+            : sessionMinutes * 60000;
+
         ActiveAppsManager.sessionLimitMap[pkg] = sessionMs;
         ActiveAppsManager.sessionStartTimeMap[pkg] = now;
 
@@ -188,7 +191,12 @@ void onStart(ServiceInstance service) async {
   service.on('syncReminderOption').listen((event) async {
     if (event != null) {
       final option = event['option'] as int? ?? 0;
+      final oldOption = ActiveAppsManager.reminderOptionSetting;
       ActiveAppsManager.reminderOptionSetting = option;
+      if (oldOption != option) {
+        ActiveAppsManager.sessionStartTimeMap.clear();
+        ActiveAppsManager.sessionLimitMap.clear();
+      }
     }
   });
 

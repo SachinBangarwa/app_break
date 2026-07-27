@@ -69,6 +69,10 @@ class PollingAppMonitor {
     }
 
     _sessionStartUsage.remove(pkg);
+    if (ActiveAppsManager.reminderOptionSetting == -1) {
+      ActiveAppsManager.sessionStartTimeMap.remove(pkg);
+      ActiveAppsManager.sessionLimitMap.remove(pkg);
+    }
   }
 
   /// 4-Second Periodic Polling Loop ko shuru karta hai
@@ -247,9 +251,23 @@ class PollingAppMonitor {
             final reminderOpt = ActiveAppsManager.reminderOptionSetting;
 
             if (reminderOpt == -1) {
-              openApp = pName;
-              openAppStart = eventTime;
-              _sessionStartUsage[pName] = todayUsage;
+              final sessionStart =
+                  ActiveAppsManager.sessionStartTimeMap[pName] ?? 0;
+
+              if (sessionStart <= 0) {
+                await triggerSessionPromptOverlay(
+                  pName,
+                  todayUsage,
+                  sessionLimitMs: -1,
+                  sessionUsageMs: 0,
+                );
+                openApp = null;
+                openAppStart = 0;
+              } else {
+                openApp = pName;
+                openAppStart = eventTime;
+                _sessionStartUsage[pName] = todayUsage;
+              }
             } else if (reminderOpt > 0) {
               final preSetMs = reminderOpt * 60000;
               final nowMs = now.millisecondsSinceEpoch;
