@@ -51,13 +51,11 @@ class MyNotificationListenerService : NotificationListenerService() {
             }
         }
         sb.append("==========================================")
-        Log.d("NotificationDetailed", sb.toString())
 
         // Check if saver is enabled in SharedPreferences
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val isEnabled = prefs.getBoolean("flutter.is_notification_saver_enabled", true)
         if (!isEnabled) {
-            Log.d("NotificationSaver", "Saver is disabled. Ignoring notification for $packageName")
             return
         }
 
@@ -72,9 +70,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         if (isGroupSummary) {
             try {
                 cancelNotification(sbn.key)
-                Log.d("NotificationSaver", "Dismissed group summary notification for: $packageName")
             } catch (e: Exception) {
-                Log.e("NotificationSaver", "Error dismissing group summary: ${e.message}")
             }
             return
         }
@@ -130,7 +126,6 @@ class MyNotificationListenerService : NotificationListenerService() {
                     }
                     db.update("notifications", updateValues, "id = ?", arrayOf(duplicateId.toString()))
                     db.close()
-                    Log.d("NotificationSaver", "Updated timestamp for duplicate notification ID: $duplicateId")
 
                     // Update PendingIntent in memory to the latest one
                     if (sbn.notification.contentIntent != null) {
@@ -138,12 +133,10 @@ class MyNotificationListenerService : NotificationListenerService() {
                     }
                 } else {
                     // Print what we are about to save
-                    Log.d("NotificationDetailed", "--- DATABASE SAVE ATTEMPT ---\nPackage: $packageName\nTitle: $title\nBody: $text\nTimestamp: $timestamp\n-----------------------------")
 
                     // Insert into notifications table
                     val rowId = db.insert("notifications", null, values)
                     db.close()
-                    Log.d("NotificationSaver", "Saved notification ID: $rowId for package: $packageName")
 
                     // If insert is successful, map rowId to its PendingIntent in memory
                     if (rowId != -1L && sbn.notification.contentIntent != null) {
@@ -156,16 +149,13 @@ class MyNotificationListenerService : NotificationListenerService() {
                 uiIntent.setPackage(getPackageName())
                 sendBroadcast(uiIntent)
             } catch (e: Exception) {
-                Log.e("NotificationSaver", "Error saving notification: ${e.message}")
             }
         }
 
         // Cancel/Dismiss the notification from the system status bar
         try {
             cancelNotification(sbn.key)
-            Log.d("NotificationSaver", "Dismissed notification for: $packageName")
         } catch (e: Exception) {
-            Log.e("NotificationSaver", "Error dismissing notification: ${e.message}")
         }
     }
 

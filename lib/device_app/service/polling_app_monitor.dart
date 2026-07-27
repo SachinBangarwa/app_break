@@ -57,7 +57,6 @@ class PollingAppMonitor {
       final startUsage = _sessionStartUsage[pkg] ?? app.todayUsage;
       final finalUsage = startUsage + duration;
 
-      print("[PollingAppMonitor] Committing session for $pkg: duration ${duration / 1000}s, final usage ${finalUsage / 1000}s");
 
       // Memory (RAM) list ko update karta hai
       ActiveAppsManager.updateApp(
@@ -76,7 +75,6 @@ class PollingAppMonitor {
   static void startPollingLoop() {
     if (_isPollingLoopRunning) return;
     _isPollingLoopRunning = true;
-    print("🚀 [PollingAppMonitor] 4-Second Polling Loop STARTED.");
     pollTick();
   }
 
@@ -84,14 +82,12 @@ class PollingAppMonitor {
   static void stopPollingLoop() {
     _isPollingActive = false;
     _isPollingLoopRunning = false;
-    print("🛑 [PollingAppMonitor] 4-Second Polling Loop STOPPED.");
   }
 
   /// Har 4 second par recursive timer se pollTick call hota hai
   static void pollTick() {
     if (!_isPollingActive) {
       _isPollingLoopRunning = false;
-      print("🛑 [PollingAppMonitor] Polling loop inactive. Terminating tick.");
       return;
     }
 
@@ -99,7 +95,6 @@ class PollingAppMonitor {
       try {
         await runPollCycle();
       } catch (e) {
-        print("❌ [PollingAppMonitor] Error in poll cycle: $e");
       }
       pollTick();
     });
@@ -130,9 +125,6 @@ class PollingAppMonitor {
 
     // Naya din hone par daily usage reset karta hai
     if (isFirstRunEver || isNewDay) {
-      print(
-        "🎯 [TRACK] 🌙 [NEW_DAY_RESET] New Day Detected ($todayKey)! Resetting daily usages & extra limits to 0...",
-      );
       if (isNewDay && !isFirstRunEver) {
         for (final app in ActiveAppsManager.activeAppsList) {
           ActiveAppsManager.updateApp(
@@ -196,22 +188,12 @@ class PollingAppMonitor {
       final eType = latestPackageEntry.eventType;
 
       if (eType == '1') {
-        print(
-          "🎯 [TRACK] 📱 [APP_OPENED] MOVE_TO_FOREGROUND (eType 1) -> Package: $pName | Time: ${DateTime.fromMillisecondsSinceEpoch(eventTime)}",
-        );
       } else if (eType == '2') {
-        print(
-          "🎯 [TRACK] 🔙 [APP_CLOSED] MOVE_TO_BACKGROUND (eType 2) -> Package: $pName | Time: ${DateTime.fromMillisecondsSinceEpoch(eventTime)}",
-        );
       }
 
       if (pName.isNotEmpty && eventTime > 0) {
         // Agar koi app pehle se khula tha, toh uska session close aur save karenge
         if (openApp != null && openApp.isNotEmpty) {
-          final duration = eventTime - openAppStart;
-          print(
-            "🎯 [TRACK] ⏳ [SESSION_CLOSED] Closing session for $openApp -> Active Session Duration: ${duration / 1000}s",
-          );
           await commitOpenSession(
             openApp,
             openAppStart,
@@ -255,15 +237,9 @@ class PollingAppMonitor {
           final todayUsage = trackedApp?.todayUsage ?? systemUsageToday;
           final allowedLimit = todayLimit + extraLimit;
 
-          print(
-            "🎯 [TRACK] 📊 [USAGE_SYNC] App: $pName | RAM Usage: ${todayUsage / 1000}s | Daily Limit: ${todayLimit / 60000}m | Extra Limit: ${extraLimit / 1000}s | Allowed Total: ${allowedLimit / 1000}s",
-          );
 
           final isBlocked = todayLimit > 0 && todayUsage >= allowedLimit;
           if (isBlocked) {
-            print(
-              "🎯 [TRACK] 🚨 [DAILY_BLOCK_TRIGGER] Daily Limit Exceeded for $pName! (Usage: ${todayUsage / 1000}s >= Allowed Daily: ${allowedLimit / 1000}s) -> Triggering Overlay Blocker!",
-            );
             await blockApp(pName, todayLimit, todayUsage);
             openApp = null;
             openAppStart = 0;
@@ -271,9 +247,6 @@ class PollingAppMonitor {
             final reminderOpt = ActiveAppsManager.reminderOptionSetting;
 
             if (reminderOpt == -1) {
-              print(
-                "🎯 [TRACK] 🚫 [NO_REMINDER_MODE] Reminder setting is 'No reminder' (-1). Starting session directly for $pName",
-              );
               openApp = pName;
               openAppStart = eventTime;
               _sessionStartUsage[pName] = todayUsage;
@@ -293,18 +266,12 @@ class PollingAppMonitor {
               final isSessionActive = elapsedSession < preSetMs;
 
               if (isSessionActive) {
-                print(
-                  "🎯 [TRACK] ✅ [AUTO_REMINDER_ACTIVE] App $pName in auto ${reminderOpt}m session! Elapsed: ${elapsedSession / 1000}s / ${preSetMs / 60000}m",
-                );
                 openApp = pName;
                 openAppStart = eventTime;
                 _sessionStartUsage[pName] = todayUsage;
               } else {
                 ActiveAppsManager.sessionLimitMap.remove(pName);
                 ActiveAppsManager.sessionStartTimeMap.remove(pName);
-                print(
-                  "🎯 [TRACK] 💡 [AUTO_REMINDER_EXPIRED] Auto ${reminderOpt}m session expired for $pName! Triggering Session Prompt Overlay!",
-                );
                 await triggerSessionPromptOverlay(
                   pName,
                   todayUsage,
@@ -328,9 +295,6 @@ class PollingAppMonitor {
                   elapsedSession < sessionLimit;
 
               if (isSessionActive) {
-                print(
-                  "🎯 [TRACK] ✅ [SESSION_ACTIVE_RUN] App $pName inside active session! Elapsed: ${elapsedSession / 1000}s / Session Limit: ${sessionLimit / 60000}m | Daily Usage: ${todayUsage / 1000}s / Daily Limit: ${allowedLimit / 60000}m",
-                );
                 openApp = pName;
                 openAppStart = eventTime;
                 _sessionStartUsage[pName] = todayUsage;
@@ -339,9 +303,6 @@ class PollingAppMonitor {
                   ActiveAppsManager.sessionLimitMap.remove(pName);
                   ActiveAppsManager.sessionStartTimeMap.remove(pName);
                 }
-                print(
-                  "🎯 [TRACK] 💡 [SESSION_PROMPT_TRIGGER] Session limit not active/expired for $pName! (Session Limit: ${sessionLimit / 60000}m, Elapsed: ${elapsedSession / 1000}s) -> Triggering Mindful Intent Overlay!",
-                );
                 await triggerSessionPromptOverlay(
                   pName,
                   todayUsage,
@@ -371,7 +332,6 @@ class PollingAppMonitor {
       }
 
       if (isScreenOffOrShutdown) {
-        print("🎯 [TRACK] 🔒 [SCREEN_OFF] Committing session for $openApp");
         if (openApp != null && openApp.isNotEmpty) {
           await commitOpenSession(
             openApp,
@@ -411,26 +371,17 @@ class PollingAppMonitor {
                   ? (now.millisecondsSinceEpoch - sessionStart)
                   : liveExtra;
 
-          print(
-            "🎯 [TRACK] ▶️ [LIVE_RUNNING] App: $openApp | Live Session: ${liveSessionUsage / 1000}s / ${sessionLimit / 60000}m | Total Daily Usage: ${liveUsage / 1000}s / ${allowedMs / 60000}m",
-          );
 
           final isDailyBlocked = allowedMs > 0 && liveUsage >= allowedMs;
           final isSessionFinished =
               sessionLimit > 0 && liveSessionUsage >= sessionLimit;
 
           if (isDailyBlocked) {
-            print(
-              "🎯 [TRACK] 🚨 [DAILY_BLOCK_TRIGGER] Daily Limit Exceeded for $openApp during continuous run! (Live Daily: ${liveUsage / 1000}s >= Allowed Daily: ${allowedMs / 1000}s) -> Triggering Overlay Blocker!",
-            );
             await blockApp(openApp, limitMs, liveUsage);
 
             openApp = null;
             openAppStart = 0;
           } else if (isSessionFinished) {
-            print(
-              "🎯 [TRACK] ⌛ [SESSION_FINISHED] Session time finished for $openApp (${liveSessionUsage / 1000}s >= ${sessionLimit / 1000}s) -> Triggering Session Prompt!",
-            );
 
             ActiveAppsManager.sessionLimitMap.remove(openApp);
             ActiveAppsManager.sessionStartTimeMap.remove(openApp);
@@ -473,9 +424,6 @@ class PollingAppMonitor {
       if (isLauncherOrHome) {
         final isOverlayActive = await FlutterOverlayWindow.isActive();
         if (isOverlayActive) {
-          print(
-            "🎯 [TRACK] 🚪 [OVERLAY_DISMISS] User returned to Home/Launcher. Closing blocker overlay.",
-          );
           await FlutterOverlayWindow.closeOverlay();
         }
       }

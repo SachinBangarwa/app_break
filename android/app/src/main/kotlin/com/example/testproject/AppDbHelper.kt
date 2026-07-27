@@ -39,9 +39,7 @@ class AppDbHelper(private val context: Context) : SQLiteOpenHelper(context, DATA
                 "extraLimit INTEGER DEFAULT 0" +
                 ")"
             )
-            Log.d("AppDbHelper", "installed_apps table created successfully natively.")
         } catch (e: Exception) {
-            Log.e("AppDbHelper", "Error creating installed_apps table natively: ${e.message}")
         }
     }
 
@@ -64,7 +62,6 @@ class AppDbHelper(private val context: Context) : SQLiteOpenHelper(context, DATA
                 "timestamp INTEGER" +
                 ")"
             )
-            Log.d("AppDbHelper", "notifications table verified/created natively.")
 
             // 2. Column schema check & upgrades (PRAGMA table_info checking)
             val columns = ArrayList<String>()
@@ -88,11 +85,9 @@ class AppDbHelper(private val context: Context) : SQLiteOpenHelper(context, DATA
             for ((colName, colType) in newCols) {
                 if (!columns.contains(colName)) {
                     db?.execSQL("ALTER TABLE installed_apps ADD COLUMN $colName $colType")
-                    Log.d("AppDbHelper", "Added column $colName to installed_apps table natively.")
                 }
             }
         } catch (e: Exception) {
-            Log.e("AppDbHelper", "Error verifying schema in onOpen natively: ${e.message}")
         }
     }
 
@@ -141,7 +136,6 @@ class AppDbHelper(private val context: Context) : SQLiteOpenHelper(context, DATA
             }
             cursor.close()
         } catch (e: Exception) {
-            Log.e("AppDbHelper", "Error loading active apps natively: ${e.message}")
         }
         return list
     }
@@ -151,7 +145,6 @@ class AppDbHelper(private val context: Context) : SQLiteOpenHelper(context, DATA
             val db = writableDatabase
             db.execSQL("UPDATE installed_apps SET todayUsage = ? WHERE packageName = ?", arrayOf(usageMs, packageName))
         } catch (e: Exception) {
-            Log.e("AppDbHelper", "Error updating usage natively: ${e.message}")
         }
     }
 
@@ -160,7 +153,6 @@ class AppDbHelper(private val context: Context) : SQLiteOpenHelper(context, DATA
             val db = writableDatabase
             db.execSQL("UPDATE installed_apps SET extraLimit = ? WHERE packageName = ?", arrayOf(extraLimitMs, packageName))
         } catch (e: Exception) {
-            Log.e("AppDbHelper", "Error updating extra limit natively: ${e.message}")
         }
     }
 }

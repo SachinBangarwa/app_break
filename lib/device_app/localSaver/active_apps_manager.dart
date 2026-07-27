@@ -52,14 +52,8 @@ class ActiveAppsManager {
           updated.countdown == 0 &&
           updated.todayLimit == 0 &&
           updated.extraLimit == 0) {
-        print(
-          "[ActiveAppsManager] REMOVED app from memory list: $packageName (All parameters became 0/inactive)",
-        );
         activeAppsList.removeAt(index);
       } else {
-        print(
-          "[ActiveAppsManager] UPDATED app in memory list: $packageName -> Favorite: ${updated.isFavorite}, Countdown: ${updated.countdown}s, Limit: ${updated.todayLimit}ms, ExtraLimit: ${updated.extraLimit}ms, SessionLimit: ${updated.sessionLimit}ms",
-        );
         activeAppsList[index] = updated;
       }
     } else {
@@ -71,9 +65,6 @@ class ActiveAppsManager {
           (sessionLimit != null && sessionLimit > 0);
 
       if (shouldAdd) {
-        print(
-          "[ActiveAppsManager] ADDED new app to memory list: $packageName -> Favorite: ${isFavorite ?? 0}, Countdown: ${countdown ?? 0}s, Limit: ${todayLimit ?? 0}ms, ExtraLimit: ${extraLimit ?? 0}ms, SessionLimit: ${sessionLimit ?? 0}ms",
-        );
         activeAppsList.add(
           CustomAppModel(
             packageName: packageName,
@@ -93,21 +84,14 @@ class ActiveAppsManager {
       }
     }
 
-    print("[ActiveAppsManager] Current Active Apps in RAM: $activeAppsList");
 
     if (!isServiceIsolate) {
       if (isFavorite != null) {
-        print(
-          "[ActiveAppsManager] DATABASE UPDATE: Saving Favorite status = $isFavorite for $packageName in background",
-        );
         AppDbHelper.instance.updateFavoriteStatus(packageName, isFavorite == 1);
         _notifyLimitChanged(packageName);
       }
 
       if (countdown != null) {
-        print(
-          "[ActiveAppsManager] DATABASE UPDATE: Saving Countdown Delay = ${countdown}s for $packageName in background",
-        );
         AppDbHelper.instance.updateAppCountdown(packageName, countdown);
         _notifyLimitChanged(packageName);
       }
@@ -135,20 +119,13 @@ class ActiveAppsManager {
     Uint8List? icon,
     required int limitMs,
   }) async {
-    print("[ActiveAppsManager] Fetching live system usage for $packageName...");
     final usageMs = await calculateTodaySystemUsage(packageName);
-    print(
-      "[ActiveAppsManager] Live system usage for $packageName fetched: ${usageMs / 1000} seconds",
-    );
 
     int index = activeAppsList.indexWhere(
       (app) => app.packageName == packageName,
     );
     if (index != -1) {
       var existing = activeAppsList[index];
-      print(
-        "[ActiveAppsManager] UPDATING usage in memory list for $packageName to ${usageMs}ms",
-      );
       activeAppsList[index] = CustomAppModel(
         packageName: packageName,
         displayName: displayName,
@@ -163,9 +140,6 @@ class ActiveAppsManager {
       );
     }
 
-    print(
-      "[ActiveAppsManager] DATABASE UPDATE: Saving todayLimit = ${limitMs}ms and todayUsage = ${usageMs}ms for $packageName in background",
-    );
     await AppDbHelper.instance.updateAppLimit(packageName, limitMs, usageMs);
 
     _notifyLimitChanged(packageName);
@@ -181,9 +155,6 @@ class ActiveAppsManager {
       );
       if (index != -1) {
         final app = activeAppsList[index];
-        print(
-          "[ActiveAppsManager] Sending syncActiveApp to background service for ${app.packageName} (Favorite: ${app.isFavorite}, Limit: ${app.todayLimit}ms, Countdown: ${app.countdown}s)",
-        );
         service.invoke('syncActiveApp', {
           'packageName': app.packageName,
           'displayName': app.displayName,
@@ -199,9 +170,6 @@ class ActiveAppsManager {
           'icon': app.icon,
         });
       } else {
-        print(
-          "[ActiveAppsManager] Sending syncActiveApp (REMOVE/RESET) to background service for $packageName",
-        );
         service.invoke('syncActiveApp', {
           'packageName': packageName,
           'displayName': '',
@@ -215,9 +183,6 @@ class ActiveAppsManager {
         });
       }
     } catch (e) {
-      print(
-        "[ActiveAppsManager] Error syncing active app to background service: $e",
-      );
     }
   }
 
@@ -309,7 +274,6 @@ class ActiveAppsManager {
 
       return totalDurationMs;
     } catch (e) {
-      print("[ActiveAppsManager] Error calculating system usage: $e");
       return 0;
     }
   }

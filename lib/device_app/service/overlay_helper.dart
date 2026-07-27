@@ -8,7 +8,6 @@ const Duration shareDataDelay = Duration(milliseconds: 400);
 Future<void> triggerRestrictOverlay(String packageName, int delaySeconds) async {
   final appName = await UsageDataSaver.getAppName(packageName);
   
-  print("[AppLimitServiceOverlay] Showing restrict overlay for $appName with delay $delaySeconds s.");
 
   await FlutterOverlayWindow.showOverlay(
     alignment: OverlayAlignment.center,
@@ -35,7 +34,6 @@ Future<void> blockApp(String activePackage, int limitMs, int todayUsageMs) async
 
   if (!isOverlayActive) {
     final appName = await UsageDataSaver.getAppName(activePackage);
-    print("[AppLimitServiceOverlay] Blocker triggered! Showing overlay for $appName.");
 
     await FlutterOverlayWindow.showOverlay(
       alignment: OverlayAlignment.center,
@@ -71,7 +69,6 @@ Future<void> triggerSessionPromptOverlay(
   );
 
   if (!hasLimit) {
-    print("[AppLimitServiceOverlay] Skipping session prompt for $activePackage because no daily limit is set.");
     return;
   }
 
@@ -79,7 +76,6 @@ Future<void> triggerSessionPromptOverlay(
 
   if (!isOverlayActive) {
     final appName = await UsageDataSaver.getAppName(activePackage);
-    print("[AppLimitServiceOverlay] Session prompt triggered! Showing overlay for $appName.");
 
     await FlutterOverlayWindow.showOverlay(
       alignment: OverlayAlignment.center,

@@ -64,7 +64,6 @@ class _ReminderScreenState extends State<ReminderScreen> {
         FlutterBackgroundService().invoke('syncReminderOption', {'option': value});
       }
     } catch (e) {
-      debugPrint("Error syncing reminder option to service: $e");
     }
   }
 

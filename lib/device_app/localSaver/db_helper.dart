@@ -2,7 +2,6 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
-import 'package:flutter/foundation.dart';
 import 'package:testproject/device_app/localSaver/custom_app_model.dart';
 
 class AppDbHelper {
@@ -55,11 +54,9 @@ class AppDbHelper {
       for (var entry in newCols.entries) {
         if (!columnNames.contains(entry.key)) {
           await db.execute('ALTER TABLE installed_apps ADD COLUMN ${entry.key} ${entry.value}');
-          print("[AppDbHelper] Added column ${entry.key} to installed_apps table.");
         }
       }
     } catch (e) {
-      print("[AppDbHelper] Error adding missing columns: $e");
     }
   }
 
@@ -172,7 +169,6 @@ class AppDbHelper {
               );
             }
           } catch (e) {
-            debugPrint("Error syncing newly installed app ${app.packageName}: $e");
           }
         }
       });
@@ -320,7 +316,6 @@ class AppDbHelper {
         return detailedApp;
       }
     } catch (e) {
-      debugPrint("Error inserting single app $packageName: $e");
     }
     return null;
   }
@@ -335,7 +330,6 @@ class AppDbHelper {
         whereArgs: [packageName],
       );
     } catch (e) {
-      debugPrint("Error deleting single app $packageName: $e");
     }
   }
 
@@ -348,7 +342,6 @@ class AppDbHelper {
         orderBy: 'timestamp DESC',
       );
     } catch (e) {
-      debugPrint("Error fetching notifications: $e");
       return [];
     }
   }
@@ -359,7 +352,6 @@ class AppDbHelper {
       final db = await database;
       await db.delete('notifications');
     } catch (e) {
-      debugPrint("Error clearing notifications: $e");
     }
   }
 
@@ -373,7 +365,6 @@ class AppDbHelper {
       );
       return maps.map((row) => CustomAppModel.fromMap(row)).toList();
     } catch (e) {
-      debugPrint("Error fetching active apps from db: $e");
       return [];
     }
   }
@@ -390,7 +381,6 @@ class AppDbHelper {
       if (maps.isEmpty) return null;
       return CustomAppModel.fromMap(maps.first);
     } catch (e) {
-      debugPrint("Error fetching app $packageName from db: $e");
       return null;
     }
   }

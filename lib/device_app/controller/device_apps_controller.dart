@@ -83,7 +83,6 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
 
       await autoStartServiceIfPermissionsGranted();
     } catch (e) {
-      debugPrint('Error checking services: $e');
     }
   }
 
@@ -97,9 +96,6 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
         final service = FlutterBackgroundService();
         final isRunning = await service.isRunning();
         if (!isRunning) {
-          debugPrint(
-            "[DeviceAppsController] All permissions granted. Auto-starting background service...",
-          );
           final started = await service.startService();
           if (started) {
             isServiceRunning.value = true;
@@ -107,7 +103,6 @@ class DeviceAppsController extends GetxController with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      debugPrint('Error auto-starting service: $e');
     }
   }
 

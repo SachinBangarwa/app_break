@@ -13,7 +13,6 @@ class AppLimitCoordinator {
   /// Service state inspect aur re-configure karta hai (Accessibility Mode vs 4-Second Polling Mode)
   static Future<void> checkAndConfigureServiceState() async {
     try {
-      print("[AppLimitCoordinator] === [START] Re-configuring service state ===");
 
       final activeApps = await AppDbHelper.instance.getActiveAppsFromDb();
       ActiveAppsManager.activeAppsList.clear();
@@ -32,7 +31,6 @@ class AppLimitCoordinator {
         appsToInitialize.add(pkg);
 
         final todayUsageMs = await calculateSystemUsageForPackage(pkg);
-        final timeLeft = (limitMs - todayUsageMs).clamp(0, limitMs);
 
         ActiveAppsManager.updateApp(
           packageName: pkg,
@@ -44,18 +42,14 @@ class AppLimitCoordinator {
 
         await AppDbHelper.instance.updateAppUsage(pkg, todayUsageMs);
 
-        print("[AppLimitCoordinator] App: $pkg | Limit: ${limitMs / 60000} min | Today Usage: ${todayUsageMs / 1000}s | Time Left: ${timeLeft / 1000}s");
       }
 
       PollingAppMonitor.setPollingActive(true);
-      print("[AppLimitCoordinator] [DECISION] Accessibility is OFF. Activating 4-second Polling Mode.");
 
       await PollingAppMonitor.initializePollingApps(appsToInitialize);
       PollingAppMonitor.startPollingLoop();
 
-      print("[AppLimitCoordinator] === [END] Re-configuration completed. (4-Second Polling Mode Active) ===");
     } catch (e) {
-      print("[AppLimitCoordinator] Error in checkAndConfigureServiceState: $e");
     }
   }
 
@@ -66,7 +60,6 @@ class AppLimitCoordinator {
     final msUntilMidnight = tomorrow.difference(now).inMilliseconds;
 
     Timer(Duration(milliseconds: msUntilMidnight), () async {
-      print("[AppLimitCoordinator] Midnight reached! Resetting usage for new day.");
       for (final app in ActiveAppsManager.activeAppsList) {
         ActiveAppsManager.updateApp(
           packageName: app.packageName,

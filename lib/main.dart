@@ -10,7 +10,7 @@ import 'package:testproject/device_app/screens/overlay_dispatcher.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AppLimitService.initializeService();
+  //await AppLimitService.initializeService();
 
   // Check initial permissions
   final hasNotification = await Permission.notification.isGranted;

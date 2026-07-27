@@ -93,12 +93,10 @@ class _OverlayWindowState extends State<OverlayWindow> {
             'packageName': _packageName,
           });
         } catch (e) {
-          debugPrint('Error invoking limitChanged from close: $e');
         }
         await InstalledApps.startApp("com.example.testproject");
         await Future.delayed(const Duration(milliseconds: 300));
       } catch (e) {
-        debugPrint("Error going home on close: $e");
       }
     }
     await FlutterOverlayWindow.closeOverlay();
@@ -119,7 +117,6 @@ class _OverlayWindowState extends State<OverlayWindow> {
 
       await Future.delayed(const Duration(milliseconds: 200));
     } catch (e) {
-      debugPrint("Error setting session limit: $e");
     } finally {
       await FlutterOverlayWindow.closeOverlay();
     }

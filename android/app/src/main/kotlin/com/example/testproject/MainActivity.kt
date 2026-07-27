@@ -79,12 +79,12 @@ class MainActivity : FlutterActivity() {
                                     pendingIntent.send(this, 0, null)
                                 }
                                 launched = true
-                                android.util.Log.d("MainActivity", "Successfully launched PendingIntent for ID: $id")
+                                android.util.
                             } catch (e: Exception) {
-                                android.util.Log.e("MainActivity", "Error sending PendingIntent: ${e.message}")
+                                android.util.
                             }
                         } else {
-                            android.util.Log.w("MainActivity", "PendingIntent was null in map for ID: $id (maybe the app was restarted or recompiled?)")
+                            android.util.
                         }
                     }
 
@@ -95,10 +95,10 @@ class MainActivity : FlutterActivity() {
                             if (launchIntent != null) {
                                 startActivity(launchIntent)
                                 launched = true
-                                android.util.Log.d("MainActivity", "Fallback: Launched app package: $packageName")
+                                android.util.
                             }
                         } catch (e: Exception) {
-                            android.util.Log.e("MainActivity", "Error launching app fallback: ${e.message}")
+                            android.util.
                         }
                     }
 
@@ -163,7 +163,6 @@ class MainActivity : FlutterActivity() {
                     Intent.ACTION_PACKAGE_ADDED -> {
                         val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
                         if (!isReplacing) {
-                            println("--- [MainActivity Kotlin] Installed Package: $packageName ---")
                             methodChannel?.invokeMethod("packageAdded", packageName)
                         }
                     }
@@ -171,7 +170,6 @@ class MainActivity : FlutterActivity() {
                     Intent.ACTION_PACKAGE_REMOVED -> {
                         val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
                         if (!isReplacing) {
-                            println("--- [MainActivity Kotlin] Uninstalled Package: $packageName ---")
                             methodChannel?.invokeMethod("packageRemoved", packageName)
                         }
                     }

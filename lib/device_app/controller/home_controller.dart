@@ -61,15 +61,12 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           
           ActiveAppsManager.activeAppsList.clear();
           ActiveAppsManager.activeAppsList.addAll(loadedApps);
-          print("[HomeController] Received full active list sync from Service: ${loadedApps.length} apps");
         }
       });
 
       // Request full list sync in case service is already running
-      print("[HomeController] Requesting active apps sync from background service...");
       service.invoke('requestActiveAppsSync');
     } catch (e) {
-      print("[HomeController] Error setting up service sync: $e");
     }
   }
 
@@ -86,7 +83,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
                 'is_system_app': app.isSystemApp == 1,
               }))
           .toList();
-      print("[HomeController] RAM activeAppsList updated. Syncing ${favApps.length} favorites to desktopApps");
       desktopApps.assignAll(favApps);
     });
   }
@@ -94,7 +90,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   void _setupPackageChannelListener() {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'notificationSaved') {
-        print("--- [Flutter Dart] Received notification saved event ---");
         if (Get.isRegistered<NotificationsController>()) {
           Get.find<NotificationsController>().loadNotifications();
         }
@@ -102,14 +97,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       }
 
       final String? pkg = call.arguments as String?;
-      print("--- [Flutter Dart] Received package change event: ${call.method} for package: $pkg ---");
       if (pkg == null || pkg.isEmpty) return;
 
       if (call.method == 'packageAdded') {
-        print("--- [Flutter Dart] Syncing single new package to SQLite: $pkg ---");
         await AppDbHelper.instance.addSingleApp(pkg);
       } else if (call.method == 'packageRemoved') {
-        print("--- [Flutter Dart] Removing single package from SQLite: $pkg ---");
         await AppDbHelper.instance.removeSingleApp(pkg);
         await UsageDataSaver.clearLimitConfig(pkg);
       }
@@ -129,7 +121,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Print whatever event/state comes in directly:
-    print("--- [LifeCycle Event] state: $state ---");
     SharedPreferences.getInstance().then((prefs) {
       if (state == AppLifecycleState.resumed) {
         prefs.setBool('is_launcher_foreground', true);
@@ -140,26 +131,20 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
     if (state == AppLifecycleState.resumed) {
       // Screen refresh on resume disabled to prevent flickering
-      print("--- [LifeCycle] Resume detected, screen refresh skipped ---");
     }
 
     /*
     switch (state) {
       case AppLifecycleState.resumed:
-        print("--- [LifeCycle] लॉन्चर खुला (FOREGROUND / RESUMED) ---");
         loadLauncherData();
         break;
       case AppLifecycleState.paused:
-        print("--- [LifeCycle] लॉन्चर बंद हुआ/यूजर बाहर गया (BACKGROUND / PAUSED) ---");
         break;
       case AppLifecycleState.inactive:
-        print("--- [LifeCycle] लॉन्चर अक्रिय/फोकस हटा (INACTIVE) ---");
         break;
       case AppLifecycleState.detached:
-        print("--- [LifeCycle] लॉन्चर बंद हो रहा है (DETACHED) ---");
         break;
       case AppLifecycleState.hidden:
-        print("--- [LifeCycle] लॉन्चर छिपा हुआ (HIDDEN) ---");
         break;
     }
     */
@@ -176,7 +161,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       // Load directly from local SQL database cache
       await loadLocalAppsFromCache();
     } catch (e) {
-      debugPrint('Error loading launcher apps: $e');
       isLoading.value = false;
     }
   }
@@ -186,13 +170,10 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       // Run system app sync with SQLite database once on launcher start
       final hasChanges = await AppDbHelper.instance.syncAppsWithSystem();
       if (hasChanges) {
-        print("[HomeController] System app changes detected. Reloading cache.");
         await loadLocalAppsFromCache();
       } else {
-        print("[HomeController] No system app changes detected on startup.");
       }
     } catch (e) {
-      debugPrint('Error syncing apps on startup: $e');
     }
   }
 
@@ -237,7 +218,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       delayEnabledMap.assignAll(tempDelayEnabledMap);
       delaySecondsMap.assignAll(tempDelaySecondsMap);
     } catch (e) {
-      debugPrint('Error loading local apps from SQLite cache: $e');
       isLoading.value = false;
     }
   }
@@ -355,7 +335,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> updateAppLimit(String packageName, int limitMs, String appName) async {
-    print("[HomeController] --- [SETTING_LIMIT] Saving limit for $appName ($packageName): $limitMs ms ---");
     bool isSystemApp = false;
     Uint8List? icon;
     try {

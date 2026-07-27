@@ -78,7 +78,6 @@ class _AppRestrictOverlayState extends State<AppRestrictOverlay> {
         await prefs.remove('launch_on_dismiss_package');
         await InstalledApps.startApp(_launchOnDismissPackage);
       } catch (e) {
-        debugPrint("Error starting app on dismiss: $e");
       }
     }
     await FlutterOverlayWindow.closeOverlay();
@@ -91,7 +90,6 @@ class _AppRestrictOverlayState extends State<AppRestrictOverlay> {
       await prefs.remove('last_restricted_package');
       await prefs.remove('last_restricted_time');
     } catch (e) {
-      debugPrint("Error clearing restrict package on close: $e");
     }
 
     if (_launchOnDismissPackage.isNotEmpty) {
@@ -99,14 +97,12 @@ class _AppRestrictOverlayState extends State<AppRestrictOverlay> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('launch_on_dismiss_package');
       } catch (e) {
-        debugPrint("Error clearing launch package: $e");
       }
     } else {
       try {
         await InstalledApps.startApp("com.example.testproject");
         await Future.delayed(const Duration(milliseconds: 300));
       } catch (e) {
-        debugPrint("Error going home from restrict close: $e");
       }
     }
     await FlutterOverlayWindow.closeOverlay();

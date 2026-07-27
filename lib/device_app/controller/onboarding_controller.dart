@@ -48,7 +48,6 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
     try {
       accessibilityGranted = await _channel.invokeMethod<bool>('checkAccessibilityPermission') ?? false;
     } catch (e) {
-      debugPrint("Error checking accessibility permission: $e");
     }
 
     hasNotificationPermission.value = notifGranted;
@@ -60,7 +59,6 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('is_accessibility_enabled', accessibilityGranted);
     } catch (e) {
-      debugPrint("Error saving accessibility permission to prefs: $e");
     }
 
     isLoading.value = false;
@@ -70,7 +68,6 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
     try {
       await _channel.invokeMethod('openAccessibilitySettings');
     } catch (e) {
-      debugPrint("Error opening accessibility settings: $e");
     }
   }
 

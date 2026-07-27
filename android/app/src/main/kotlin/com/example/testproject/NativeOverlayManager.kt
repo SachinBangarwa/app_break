@@ -32,7 +32,7 @@ object NativeOverlayManager {
                 currentOverlayView = null
             }
         } catch (e: Exception) {
-            android.util.Log.e("NativeOverlayManager", "Error removing overlay: ${e.message}")
+            android.util.
         }
     }
 

@@ -40,7 +40,6 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
       final bool granted = await _channel.invokeMethod('checkNotificationListenerPermission') ?? false;
       hasPermission.value = granted;
     } catch (e) {
-      print("Error checking notification permission: $e");
     }
   }
 
@@ -48,7 +47,6 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
     try {
       await _channel.invokeMethod('openNotificationListenerSettings');
     } catch (e) {
-      print("Error requesting notification permission: $e");
     }
   }
 
@@ -67,7 +65,6 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
       final list = await AppDbHelper.instance.getNotifications();
       notifications.assignAll(list);
     } catch (e) {
-      print("Error loading notifications: $e");
     } finally {
       isLoading.value = false;
     }
@@ -78,7 +75,6 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
       await AppDbHelper.instance.clearAllNotifications();
       notifications.clear();
     } catch (e) {
-      print("Error clearing notifications: $e");
     }
   }
 
@@ -89,7 +85,6 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
         'packageName': packageName,
       });
     } catch (e) {
-      print("Error launching notification: $e");
     }
   }
 }

@@ -60,9 +60,6 @@ void onStart(ServiceInstance service) async {
     ActiveAppsManager.activeAppsList.clear();
     ActiveAppsManager.activeAppsList.addAll(activeApps);
     ActiveAppsManager.reminderOptionSetting = await UsageDataSaver.getReminderOption();
-    print(
-      "[AppLimitService] Loaded active apps (${activeApps.length}) & Reminder Setting (${ActiveAppsManager.reminderOptionSetting}) into RAM on service start",
-    );
 
     // Dynamic app usage sync karta hai
     for (final app in activeApps) {
@@ -80,9 +77,6 @@ void onStart(ServiceInstance service) async {
         await AppDbHelper.instance.updateAppUsage(
           app.packageName,
           todayUsageMs,
-        );
-        print(
-          "🎯 [TRACK] 🔄 [SERVICE_RESTART_TEST] App: ${app.packageName} | DB Stored Usage: ${app.todayUsage / 1000}s | Fresh Android OS System Usage: ${todayUsageMs / 1000}s | Diff: ${((todayUsageMs - app.todayUsage).abs() / 1000).toStringAsFixed(1)}s",
         );
       }
     }
@@ -105,7 +99,6 @@ void onStart(ServiceInstance service) async {
             .toList();
     service.invoke('syncFullList', {'apps': listData});
   } catch (e) {
-    print("[AppLimitService] Error loading active apps on service start: $e");
   }
 
   // Single app RAM/DB update event listener
@@ -168,9 +161,6 @@ void onStart(ServiceInstance service) async {
         ActiveAppsManager.sessionLimitMap[pkg] = sessionMs;
         ActiveAppsManager.sessionStartTimeMap[pkg] = now;
 
-        print(
-          "🎯 [TRACK] ⏱️ [SESSION_SET] App: $pkg -> Selected Session Limit: ${sessionMinutes}m (${sessionMs}ms) at ${DateTime.fromMillisecondsSinceEpoch(now)}",
-        );
 
         CustomAppModel? existing;
         for (final app in ActiveAppsManager.activeAppsList) {
@@ -199,15 +189,11 @@ void onStart(ServiceInstance service) async {
     if (event != null) {
       final option = event['option'] as int? ?? 0;
       ActiveAppsManager.reminderOptionSetting = option;
-      print(
-        "🎯 [TRACK] ⚙️ [REMINDER_SETTING_SYNC] Background Service RAM updated to: $option",
-      );
     }
   });
 
   // App limit update hone par re-configuration trigger karta hai
   service.on('limitChanged').listen((event) async {
-    print("[AppLimitService] limitChanged event received in background");
     await AppLimitCoordinator.checkAndConfigureServiceState();
   });
 
@@ -231,9 +217,6 @@ void onStart(ServiceInstance service) async {
         final currentLimit = existing?.todayLimit ?? 0;
         final newExtraMs = (currentUsage - currentLimit) + extendMs;
 
-        print(
-          "🎯 [TRACK] ➕ [LIMIT_EXTEND] $pkg -> Added +$extendMinutes Min | currentUsage=${currentUsage / 1000}s, currentLimit=${currentLimit / 1000}s => newExtraLimit=${newExtraMs / 1000}s",
-        );
 
         ActiveAppsManager.updateApp(
           packageName: pkg,
@@ -269,7 +252,6 @@ void onStart(ServiceInstance service) async {
 
   // Mindful delay setting change event listener
   service.on('delayChanged').listen((event) async {
-    print("[AppLimitService] delayChanged event received in background");
     await AppLimitCoordinator.checkAndConfigureServiceState();
   });
 
@@ -277,9 +259,6 @@ void onStart(ServiceInstance service) async {
 
   // UI dwara full active apps list sync request listener
   service.on('requestActiveAppsSync').listen((event) async {
-    print(
-      "[AppLimitService] requestActiveAppsSync event received in background",
-    );
     try {
       final activeApps = await AppDbHelper.instance.getActiveAppsFromDb();
       ActiveAppsManager.activeAppsList.clear();
@@ -303,7 +282,6 @@ void onStart(ServiceInstance service) async {
               .toList();
       service.invoke('syncFullList', {'apps': listData});
     } catch (e) {
-      print("[AppLimitService] Error syncing active apps: $e");
     }
   });
 
@@ -311,7 +289,6 @@ void onStart(ServiceInstance service) async {
   service.on('requestOverlayStatus').listen((event) async {
     final type = event?['type'] as String? ?? 'block';
     final pkg = event?['packageName'] as String? ?? '';
-    print("[AppLimitService] requestOverlayStatus: type = $type, pkg = $pkg");
 
     final prefs = await SharedPreferences.getInstance();
     final activeType = prefs.getString('active_overlay_type') ?? '';

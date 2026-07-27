@@ -61,7 +61,6 @@ Future<int> getTodayUsageForPackage(String packageName) async {
       return int.tryParse(totalTimeStr) ?? 0;
     }
   } catch (e) {
-    print("Error getting usage: $e");
   }
 
   return 0;
