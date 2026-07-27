@@ -124,9 +124,16 @@ object NativeOverlayManager {
             onCloseApp()
         }
 
-        // Continue button click hone par bottom selection sheet open hogi
+        // Continue button click logic:
+        // If a preset reminder is set, apply it immediately and close overlay. Otherwise, show selector list.
         btnContinue.setOnClickListener {
-            bottomSheet.visibility = View.VISIBLE
+            val reminderOpt = ActiveAppsManager.reminderOptionSetting
+            if (reminderOpt > 0) {
+                removeOverlay()
+                onSelectSession(reminderOpt)
+            } else {
+                bottomSheet.visibility = View.VISIBLE
+            }
         }
 
         // Bottom Sheet option buttons key assignments
