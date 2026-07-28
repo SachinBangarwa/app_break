@@ -6,6 +6,7 @@ class CustomAppModel {
   final Uint8List? icon;
   final int isSystemApp;
   final int isFavorite;
+  final int isTracking;
   final int countdown;
   final int lastOpened;
   final int todayLimit;
@@ -20,6 +21,7 @@ class CustomAppModel {
     this.icon,
     required this.isSystemApp,
     required this.isFavorite,
+    this.isTracking = 0,
     required this.countdown,
     required this.lastOpened,
     required this.todayLimit,
@@ -46,6 +48,7 @@ class CustomAppModel {
       icon: iconBytes,
       isSystemApp: map['isSystemApp'] as int? ?? 0,
       isFavorite: map['isFavorite'] as int? ?? 0,
+      isTracking: map['isTracking'] as int? ?? 0,
       countdown: map['countdown'] as int? ?? 0,
       lastOpened: map['lastOpened'] as int? ?? 0,
       todayLimit: map['todayLimit'] as int? ?? 0,

@@ -16,6 +16,7 @@ class UsageDataSaver {
   static String activeBlockedName = 'active_blocked_name';
   static String notificationSaverEnabled = 'is_notification_saver_enabled';
   static String reminderOptionKey = 'reminder_option';
+  static String defaultPauseDurationKey = 'default_pause_duration';
 
   // ---------------------------------------------------------------------
   // Per-package key prefixes (actual key = prefix + packageName)
@@ -289,5 +290,18 @@ class UsageDataSaver {
   static Future<int> getReminderOption() async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
     return preferences.getInt(reminderOptionKey) ?? 0;
+  }
+
+  // =======================================================================
+  // default_pause_duration
+  // =======================================================================
+  static Future<bool> saveDefaultPauseDuration(int seconds) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setInt(defaultPauseDurationKey, seconds);
+  }
+
+  static Future<int> getDefaultPauseDuration() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getInt(defaultPauseDurationKey) ?? 6;
   }
 }

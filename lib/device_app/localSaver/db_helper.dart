@@ -49,6 +49,7 @@ class AppDbHelper {
         'todayLimit': 'INTEGER DEFAULT 0',
         'todayUsage': 'INTEGER DEFAULT 0',
         'extraLimit': 'INTEGER DEFAULT 0',
+        'isTracking': 'INTEGER DEFAULT 0',
       };
 
       for (var entry in newCols.entries) {
@@ -69,6 +70,7 @@ class AppDbHelper {
         icon BLOB,
         isSystemApp INTEGER,
         isFavorite INTEGER DEFAULT 0,
+        isTracking INTEGER DEFAULT 0,
         countdown INTEGER DEFAULT 0,
         lastOpened INTEGER DEFAULT 0,
         todayLimit INTEGER DEFAULT 0,
@@ -270,6 +272,15 @@ class AppDbHelper {
     );
   }
 
+  /// Updates countdown delay for all apps in installed_apps.
+  Future<void> updateAllAppCountdown(int seconds) async {
+    final db = await database;
+    await db.update(
+      'installed_apps',
+      {'countdown': seconds},
+    );
+  }
+
   /// Updates today usage of an app.
   Future<void> updateAppUsage(String packageName, int usageMs) async {
     final db = await database;
@@ -279,6 +290,57 @@ class AppDbHelper {
       where: 'packageName = ?',
       whereArgs: [packageName],
     );
+  }
+
+  /// Updates tracking status of an app.
+  Future<void> updateTrackingStatus(String packageName, bool isTracking) async {
+    final db = await database;
+    await db.update(
+      'installed_apps',
+      {'isTracking': isTracking ? 1 : 0},
+      where: 'packageName = ?',
+      whereArgs: [packageName],
+    );
+  }
+
+  /// Updates tracking status for all apps.
+  Future<void> updateAllTrackingStatus(bool isTracking) async {
+    final db = await database;
+    await db.update(
+      'installed_apps',
+      {'isTracking': isTracking ? 1 : 0},
+    );
+  }
+
+  /// Retrieves all apps sorted by isTracking DESC (tracked apps first), then displayName ASC.
+  Future<List<CustomAppModel>> getAppsWithTracking() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'installed_apps',
+      orderBy: 'isTracking DESC, displayName COLLATE NOCASE ASC',
+    );
+    return maps.map((row) => CustomAppModel.fromMap(row)).toList();
+  }
+
+  /// Retrieves only apps where isTracking = 1.
+  Future<List<CustomAppModel>> getTrackingApps() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'installed_apps',
+      where: 'isTracking = 1',
+      orderBy: 'displayName COLLATE NOCASE ASC',
+    );
+    return maps.map((row) => CustomAppModel.fromMap(row)).toList();
+  }
+
+  /// Returns total count of apps where isTracking = 1.
+  Future<int> getTrackingCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM installed_apps WHERE isTracking = 1');
+    if (result.isNotEmpty) {
+      return Sqflite.firstIntValue(result) ?? 0;
+    }
+    return 0;
   }
 
   /// Checks if an app is favorite.
