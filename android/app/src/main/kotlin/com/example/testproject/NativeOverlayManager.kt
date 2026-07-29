@@ -194,6 +194,10 @@ object NativeOverlayManager {
         }
     }
 
+    fun isOverlayShowing(): Boolean {
+        return currentOverlayView != null
+    }
+
     /**
      * showFocusOverlay:
      * Focus Session active hone par full-screen Focus overlay pop-up show karta hai.
@@ -201,8 +205,7 @@ object NativeOverlayManager {
     fun showFocusOverlay(
         context: Context,
         packageName: String,
-        onCloseApp: () -> Unit,
-        onStopFocusSession: () -> Unit
+        onCloseApp: () -> Unit
     ) {
         removeOverlay()
         activeOverlayPackage = packageName
@@ -213,9 +216,9 @@ object NativeOverlayManager {
         val view = inflater.inflate(R.layout.native_focus_overlay, null)
         currentOverlayView = view
 
+        val revealView = view.findViewById<RevealImageView>(R.id.focus_reveal_image)
         val txtTimer = view.findViewById<TextView>(R.id.focus_timer_text)
         val btnClose = view.findViewById<Button>(R.id.btn_focus_close_app)
-        val btnStop = view.findViewById<TextView>(R.id.btn_stop_focus)
 
         // Outlined button background design
         val closeBtnBg = GradientDrawable().apply {
@@ -228,14 +231,10 @@ object NativeOverlayManager {
 
         // Close app action
         btnClose.setOnClickListener {
-            removeOverlay()
             onCloseApp()
-        }
-
-        // Stop Focus Session action
-        btnStop.setOnClickListener {
-            removeOverlay()
-            onStopFocusSession()
+            focusHandler.postDelayed({
+                removeOverlay()
+            }, 100L)
         }
 
         // Live timer update every 1 second
@@ -243,6 +242,13 @@ object NativeOverlayManager {
         focusRunnable = object : Runnable {
             override fun run() {
                 val remainingSecs = getFocusRemainingSeconds(context)
+                val elapsedMs = getFocusElapsedMs(context)
+                val totalMs = getFocusTotalMs(context)
+                revealView?.setProgress(elapsedMs, totalMs)
+
+                val pct = if (totalMs > 0) ((elapsedMs.toDouble() / totalMs.toDouble()) * 100).toInt() else 0
+                android.util.Log.d("FocusDebug", "[ManagerLog] Image Progress from Local Prefs -> Elapsed: ${elapsedMs / 1000}s / ${totalMs / 1000}s ($pct% revealed). Remaining: ${remainingSecs}s")
+
                 if (remainingSecs <= 0) {
                     removeOverlay()
                     onCloseApp()
@@ -297,6 +303,41 @@ object NativeOverlayManager {
             return if (remainingMs > 0) remainingMs / 1000L else 0L
         } catch (e: Exception) {
             return 0L
+        }
+    }
+
+    private fun getFocusElapsedMs(context: Context): Long {
+        try {
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val allPrefs = prefs.all
+            val startVal = allPrefs["flutter.focus_session_start_time"]
+            val startTimeMs = when (startVal) {
+                is Long -> startVal
+                is Int -> startVal.toLong()
+                is String -> startVal.toLongOrNull() ?: 0L
+                else -> 0L
+            }
+            if (startTimeMs <= 0L) return 0L
+            return (System.currentTimeMillis() - startTimeMs).coerceAtLeast(0L)
+        } catch (e: Exception) {
+            return 0L
+        }
+    }
+
+    private fun getFocusTotalMs(context: Context): Long {
+        try {
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val allPrefs = prefs.all
+            val durationVal = allPrefs["flutter.focus_duration_minutes"]
+            val durationMinutes = when (durationVal) {
+                is Int -> durationVal
+                is Long -> durationVal.toInt()
+                is String -> durationVal.toIntOrNull() ?: 30
+                else -> 30
+            }
+            return durationMinutes * 60 * 1000L
+        } catch (e: Exception) {
+            return 30 * 60 * 1000L
         }
     }
 

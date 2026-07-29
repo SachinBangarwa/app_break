@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:testproject/device_app/controller/home_controller.dart';
+import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/screens/blocking_screen.dart';
 import 'package:testproject/screens/focus_screen.dart';
 import 'package:testproject/screens/overview_screen.dart';
@@ -23,6 +24,25 @@ class _MainTabScreenState extends State<MainTabScreen> {
     _currentIndex = widget.initialIndex;
     if (!Get.isRegistered<HomeController>()) {
       Get.put(HomeController(), permanent: true);
+    }
+    _checkActiveFocusSessionOnLaunch();
+  }
+
+  Future<void> _checkActiveFocusSessionOnLaunch() async {
+    final startTime = await UsageDataSaver.getFocusSessionStart();
+    final duration = await UsageDataSaver.getFocusDuration();
+    if (startTime > 0) {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final totalMs = duration * 60 * 1000;
+      if ((nowMs - startTime) < totalMs) {
+        if (mounted) {
+          setState(() {
+            _currentIndex = 4; // Focus Tab Index
+          });
+        }
+      } else {
+        await UsageDataSaver.clearFocusSessionStart();
+      }
     }
   }
 

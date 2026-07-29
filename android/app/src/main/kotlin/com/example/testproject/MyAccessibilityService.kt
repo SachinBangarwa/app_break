@@ -95,9 +95,17 @@ class MyAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
+        val pkg = event.packageName?.toString() ?: ""
+        val eventTypeName = AccessibilityEvent.eventTypeToString(event.eventType)
+        val isOverlayActive = NativeOverlayManager.isOverlayShowing()
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            Log.d("FocusDebug", "[ManagerLog] Accessibility Event -> Type: $eventTypeName | Package: '$pkg' | Class: '${event.className}' | Overlay Active? => $isOverlayActive")
+        }
+
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val packageName = event.packageName?.toString() ?: ""
-            handlePackageChanged(packageName)
+            handlePackageChanged(pkg)
         }
     }
 
@@ -386,11 +394,24 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     private fun goHome() {
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        try {
+            val success = performGlobalAction(GLOBAL_ACTION_HOME)
+            if (!success) {
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
+            }
+        } catch (e: Exception) {
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
+            } catch (_: Exception) {}
         }
-        startActivity(homeIntent)
     }
 
     // System utility tools (system package checking filters)
@@ -414,10 +435,21 @@ class MyAccessibilityService : AccessibilityService() {
         return false
     }
 
+    companion object {
+        var lastDismissedPackage: String? = null
+        var lastDismissedTimeMs: Long = 0L
+    }
+
     private fun checkFocusModeAndShowOverlay(packageName: String): Boolean {
         try {
             Log.d("FocusDebug", "===============================================")
             Log.d("FocusDebug", "[1] Event Received for package: '$packageName'")
+
+            // 0. Cooldown check: If user JUST tapped "Close app" for this exact app within the last 3 seconds, suppress re-triggering overlay during background transition
+            if (packageName == lastDismissedPackage && (System.currentTimeMillis() - lastDismissedTimeMs) < 3000L) {
+                Log.d("FocusDebug", "Suppressing duplicate overlay trigger for closing package '$packageName'")
+                return false
+            }
 
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val allPrefs = prefs.all
@@ -486,15 +518,12 @@ class MyAccessibilityService : AccessibilityService() {
                     this,
                     packageName,
                     onCloseApp = {
-                        Log.d("FocusDebug", "User clicked Close App on Focus Overlay")
+                        Log.d("FocusDebug", "User clicked Close App on Focus Overlay for package '$packageName'")
+                        lastDismissedPackage = packageName
+                        lastDismissedTimeMs = System.currentTimeMillis()
                         openApp = null
                         openAppStart = 0
                         goHome()
-                    },
-                    onStopFocusSession = {
-                        Log.d("FocusDebug", "User clicked Stop Focus Session on Focus Overlay")
-                        prefs.edit().remove("flutter.focus_session_start_time").apply()
-                        NativeOverlayManager.removeOverlay()
                     }
                 )
                 return true
