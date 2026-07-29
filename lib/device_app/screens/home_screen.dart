@@ -4,7 +4,7 @@ import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:testproject/device_app/screens/device_apps_screen.dart';
 import 'package:testproject/device_app/controller/home_controller.dart';
-import 'package:testproject/device_app/screens/notifications_screen.dart';
+import 'package:testproject/screens/notifications_screen.dart';
 import 'package:testproject/device_app/screens/reminder_screen.dart';
 import 'package:testproject/screens/pause_screen.dart';
 

@@ -38,6 +38,26 @@ class AppDbHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS websites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT UNIQUE,
+        isSelected INTEGER DEFAULT 0,
+        createdAt INTEGER
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS blocked_websites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT UNIQUE,
+        isBlocked INTEGER DEFAULT 0,
+        createdAt INTEGER
+      )
+    ''');
+
+    await _seedWebsitesIfEmpty(db);
+
     // Dynamically add columns to installed_apps if they are missing
     try {
       final columns = await db.rawQuery('PRAGMA table_info(installed_apps)');
@@ -59,6 +79,10 @@ class AppDbHelper {
       }
     } catch (e) {
     }
+  }
+
+  Future<void> _seedWebsitesIfEmpty(Database db) async {
+    // No dummy data seeded automatically - all websites added by user
   }
 
   Future _createDB(Database db, int version) async {
@@ -341,6 +365,154 @@ class AppDbHelper {
       return Sqflite.firstIntValue(result) ?? 0;
     }
     return 0;
+  }
+
+  // =======================================================================
+  // Websites Database Methods
+  // =======================================================================
+
+  /// Get websites ordered by isSelected DESC (selected on top), then id DESC
+  Future<List<Map<String, dynamic>>> getWebsites() async {
+    final db = await database;
+    return await db.query(
+      'websites',
+      orderBy: 'isSelected DESC, id DESC',
+    );
+  }
+
+  /// Add a website domain (default isSelected = 1)
+  Future<int> addWebsite(String rawInput) async {
+    final db = await database;
+    String domain = rawInput.trim().toLowerCase();
+    // Clean up domain if URL was entered
+    domain = domain.replaceAll(RegExp(r'^https?://'), '');
+    domain = domain.replaceAll(RegExp(r'^www\.'), '');
+    if (domain.contains('/')) {
+      domain = domain.split('/').first;
+    }
+    if (domain.isEmpty) return -1;
+
+    try {
+      return await db.insert(
+        'websites',
+        {
+          'domain': domain,
+          'isSelected': 1,
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  /// Update single website isSelected status
+  Future<void> updateWebsiteSelection(int id, bool isSelected) async {
+    final db = await database;
+    await db.update(
+      'websites',
+      {'isSelected': isSelected ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Update all websites isSelected status
+  Future<void> updateAllWebsitesSelection(bool isSelected) async {
+    final db = await database;
+    await db.update(
+      'websites',
+      {'isSelected': isSelected ? 1 : 0},
+    );
+  }
+
+  /// Delete list of website IDs
+  Future<void> deleteWebsites(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    final whereArgs = ids.join(',');
+    await db.delete(
+      'websites',
+      where: 'id IN ($whereArgs)',
+    );
+  }
+
+  /// Delete all websites
+  Future<void> deleteAllWebsites() async {
+    final db = await database;
+    await db.delete('websites');
+  }
+
+  /// Get count of selected websites
+  Future<int> getSelectedWebsitesCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM websites WHERE isSelected = 1');
+    if (result.isNotEmpty) {
+      return Sqflite.firstIntValue(result) ?? 0;
+    }
+    return 0;
+  }
+
+  // =======================================================================
+  // Blocked Websites Database Methods
+  // =======================================================================
+
+  /// Get blocked_websites ordered by isBlocked DESC (blocked on top), then id DESC
+  Future<List<Map<String, dynamic>>> getBlockedWebsites() async {
+    final db = await database;
+    return await db.query(
+      'blocked_websites',
+      orderBy: 'isBlocked DESC, id DESC',
+    );
+  }
+
+  /// Add a domain to blocked_websites (default isBlocked = 1)
+  Future<int> addBlockedWebsite(String rawInput) async {
+    final db = await database;
+    String domain = rawInput.trim().toLowerCase();
+    domain = domain.replaceAll(RegExp(r'^https?://'), '');
+    domain = domain.replaceAll(RegExp(r'^www\.'), '');
+    if (domain.contains('/')) {
+      domain = domain.split('/').first;
+    }
+    if (domain.isEmpty) return -1;
+
+    try {
+      return await db.insert(
+        'blocked_websites',
+        {
+          'domain': domain,
+          'isBlocked': 1,
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  /// Update single website isBlocked status
+  Future<void> updateWebsiteBlockingStatus(int id, bool isBlocked) async {
+    final db = await database;
+    await db.update(
+      'blocked_websites',
+      {'isBlocked': isBlocked ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Delete list of blocked website IDs
+  Future<void> deleteBlockedWebsites(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    final whereArgs = ids.join(',');
+    await db.delete(
+      'blocked_websites',
+      where: 'id IN ($whereArgs)',
+    );
   }
 
   /// Checks if an app is favorite.

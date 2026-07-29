@@ -4,6 +4,7 @@ import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/localSaver/localSaver.dart';
 import 'package:testproject/screens/app_limits_screen.dart';
 import 'package:testproject/screens/configured_apps_screen.dart';
+import 'package:testproject/screens/configured_sites_screen.dart';
 import 'package:testproject/screens/reminder_screen.dart';
 
 class PauseScreen extends StatefulWidget {
@@ -17,11 +18,13 @@ class _PauseScreenState extends State<PauseScreen> {
   bool isPauseProtectionActive = true;
   int selectedBottomNavIndex = 1; // "Pause" is selected by default
   int _selectedAppsCount = 0;
+  int _selectedSitesCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadSelectedAppsCount();
+    _loadSelectedSitesCount();
   }
 
   Future<void> _loadSelectedAppsCount() async {
@@ -29,6 +32,15 @@ class _PauseScreenState extends State<PauseScreen> {
     if (mounted) {
       setState(() {
         _selectedAppsCount = count;
+      });
+    }
+  }
+
+  Future<void> _loadSelectedSitesCount() async {
+    final count = await AppDbHelper.instance.getSelectedWebsitesCount();
+    if (mounted) {
+      setState(() {
+        _selectedSitesCount = count;
       });
     }
   }
@@ -248,8 +260,16 @@ class _PauseScreenState extends State<PauseScreen> {
                     _buildOptionItem(
                       icon: Icons.language_rounded,
                       title: 'Websites',
-                      subtitle: '1 sites selected',
-                      onTap: () {},
+                      subtitle: '$_selectedSitesCount sites selected',
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ConfiguredSitesScreen(),
+                          ),
+                        );
+                        _loadSelectedSitesCount();
+                      },
                     ),
                     const Divider(
                       height: 1,
@@ -352,49 +372,6 @@ class _PauseScreenState extends State<PauseScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-
-      // Bottom Navigation Bar
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(
-              top: BorderSide(color: Color(0xFFE5E7EB), width: 1.0),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(
-                index: 0,
-                icon: Icons.access_time_rounded,
-                label: 'Overview',
-              ),
-              _buildNavItem(
-                index: 1,
-                icon: Icons.pause_circle_filled_rounded,
-                label: 'Pause',
-              ),
-              _buildNavItem(
-                index: 2,
-                icon: Icons.shield_outlined,
-                label: 'Blocking',
-              ),
-              _buildNavItem(
-                index: 3,
-                icon: Icons.history_rounded,
-                label: 'Portal',
-              ),
-              _buildNavItem(
-                index: 4,
-                icon: Icons.track_changes_rounded,
-                label: 'Focus',
-              ),
             ],
           ),
         ),
@@ -591,38 +568,6 @@ class _PauseScreenState extends State<PauseScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required int index,
-    required IconData icon,
-    required String label,
-  }) {
-    final bool isSelected = selectedBottomNavIndex == index;
-    final Color itemColor = isSelected ? Colors.black : const Color(0xFF6F6F6F);
-
-    return InkWell(
-      onTap: () {
-        setState(() {
-          selectedBottomNavIndex = index;
-        });
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: itemColor, size: 24),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-              color: itemColor,
-            ),
-          ),
-        ],
       ),
     );
   }

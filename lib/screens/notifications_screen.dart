@@ -43,7 +43,9 @@ class NotificationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(NotificationsController());
-    final homeController = Get.find<HomeController>();
+    final homeController = Get.isRegistered<HomeController>()
+        ? Get.find<HomeController>()
+        : Get.put(HomeController());
 
     return Scaffold(
       backgroundColor: Colors.black,

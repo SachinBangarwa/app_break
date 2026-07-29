@@ -5,6 +5,7 @@ import 'package:usage_stats/usage_stats.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:testproject/device_app/screens/home_screen.dart';
 import 'package:testproject/device_app/screens/onboarding_screen.dart';
+import 'package:testproject/screens/main_tab_screen.dart';
 import 'package:testproject/device_app/service/app_limit_service.dart';
 import 'package:testproject/device_app/screens/overlay_dispatcher.dart';
 
@@ -48,7 +49,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: showOnboarding ? const OnboardingScreen() : const HomeScreen(),
+      home: showOnboarding ? const OnboardingScreen() : const MainTabScreen(),
     );
   }
 }

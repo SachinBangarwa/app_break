@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:usage_stats/usage_stats.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:testproject/device_app/screens/home_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:testproject/screens/main_tab_screen.dart';
 
 class OnboardingController extends GetxController with WidgetsBindingObserver {
   final hasNotificationPermission = false.obs;
@@ -16,7 +16,9 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
   final hasAccessibilityPermission = false.obs;
   final isLoading = true.obs;
 
-  static const _channel = MethodChannel('com.example.testproject/package_change');
+  static const _channel = MethodChannel(
+    'com.example.testproject/package_change',
+  );
 
   @override
   void onInit() {
@@ -46,9 +48,10 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
 
     bool accessibilityGranted = false;
     try {
-      accessibilityGranted = await _channel.invokeMethod<bool>('checkAccessibilityPermission') ?? false;
-    } catch (e) {
-    }
+      accessibilityGranted =
+          await _channel.invokeMethod<bool>('checkAccessibilityPermission') ??
+          false;
+    } catch (e) {}
 
     hasNotificationPermission.value = notifGranted;
     hasUsagePermission.value = usageGranted;
@@ -58,8 +61,7 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('is_accessibility_enabled', accessibilityGranted);
-    } catch (e) {
-    }
+    } catch (e) {}
 
     isLoading.value = false;
   }
@@ -67,8 +69,7 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
   Future<void> requestAccessibility() async {
     try {
       await _channel.invokeMethod('openAccessibilitySettings');
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   Future<void> requestNotification() async {
@@ -96,7 +97,7 @@ class OnboardingController extends GetxController with WidgetsBindingObserver {
     isLoading.value = true;
     final service = FlutterBackgroundService();
     await service.startService();
-    
-    Get.offAll(() => const HomeScreen());
+
+    Get.offAll(() => const MainTabScreen());
   }
 }

@@ -304,4 +304,67 @@ class UsageDataSaver {
     SharedPreferences preferences = await SharedPreferences.getInstance();
     return preferences.getInt(defaultPauseDurationKey) ?? 6;
   }
+
+  // =======================================================================
+  // shorts_blocking_list
+  // =======================================================================
+  static String shortsBlockingListKey = 'shorts_blocking_list';
+
+  static Future<bool> saveShortsBlockingList(List<int> list) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    final stringList = list.map((e) => e.toString()).toList();
+    return await preferences.setStringList(shortsBlockingListKey, stringList);
+  }
+
+  static Future<List<int>> getShortsBlockingList() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    final stringList = preferences.getStringList(shortsBlockingListKey);
+    if (stringList == null || stringList.isEmpty) {
+      return [0, 0, 0, 0, 0, 0, 0];
+    }
+    return stringList.map((e) => int.tryParse(e) ?? 0).toList();
+  }
+
+  // =======================================================================
+  // Focus Session Storage
+  // =======================================================================
+  static String focusBlockedAppsKey = 'focus_blocked_apps';
+  static String focusDurationMinutesKey = 'focus_duration_minutes';
+
+  static Future<bool> saveFocusBlockedApps(List<String> packageNames) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setStringList(focusBlockedAppsKey, packageNames);
+  }
+
+  static Future<List<String>> getFocusBlockedApps() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getStringList(focusBlockedAppsKey) ?? [];
+  }
+
+  static Future<bool> saveFocusDuration(int minutes) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setInt(focusDurationMinutesKey, minutes);
+  }
+
+  static Future<int> getFocusDuration() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getInt(focusDurationMinutesKey) ?? 30;
+  }
+
+  static String focusSessionStartTimeKey = 'focus_session_start_time';
+
+  static Future<bool> saveFocusSessionStart(int timestamp) async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.setInt(focusSessionStartTimeKey, timestamp);
+  }
+
+  static Future<int> getFocusSessionStart() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getInt(focusSessionStartTimeKey) ?? 0;
+  }
+
+  static Future<bool> clearFocusSessionStart() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    return await preferences.remove(focusSessionStartTimeKey);
+  }
 }
