@@ -16,6 +16,7 @@ class _FocusScreenState extends State<FocusScreen> {
   List<String> _blockedPackages = [];
   AppInfo? _firstBlockedAppInfo;
   int _focusDurationMinutes = 30;
+  bool _isSessionActive = false;
 
   @override
   void initState() {
@@ -30,7 +31,9 @@ class _FocusScreenState extends State<FocusScreen> {
 
     AppInfo? firstApp;
     if (apps.isNotEmpty) {
-      final allApps = await AppDbHelper.instance.getApps(excludeSystemApps: false);
+      final allApps = await AppDbHelper.instance.getApps(
+        excludeSystemApps: false,
+      );
       for (var a in allApps) {
         if (a.packageName == apps.first) {
           firstApp = a;
@@ -39,31 +42,24 @@ class _FocusScreenState extends State<FocusScreen> {
       }
     }
 
+    bool active = false;
+    if (startTime > 0) {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final totalMs = duration * 60 * 1000;
+      if ((nowMs - startTime) < totalMs) {
+        active = true;
+      } else {
+        await UsageDataSaver.clearFocusSessionStart();
+      }
+    }
+
     if (mounted) {
       setState(() {
         _blockedPackages = apps;
         _firstBlockedAppInfo = firstApp;
         _focusDurationMinutes = duration;
+        _isSessionActive = active;
       });
-
-      // Auto-restore active session if currently running
-      if (startTime > 0) {
-        final nowMs = DateTime.now().millisecondsSinceEpoch;
-        final totalMs = duration * 60 * 1000;
-        if ((nowMs - startTime) < totalMs) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => FocusActiveSessionScreen(
-                startTimeMs: startTime,
-                durationMinutes: duration,
-              ),
-            ),
-          );
-        } else {
-          await UsageDataSaver.clearFocusSessionStart();
-        }
-      }
     }
   }
 
@@ -84,19 +80,22 @@ class _FocusScreenState extends State<FocusScreen> {
   void _showInfoDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text("Focus Mode"),
-        content: const Text(
-          "During a Focus Session, access to configured apps is strictly blocked to help you stay focused on your work.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Got it"),
+      builder:
+          (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text("Focus Mode"),
+            content: const Text(
+              "During a Focus Session, access to configured apps is strictly blocked to help you stay focused on your work.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Got it"),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -128,7 +127,10 @@ class _FocusScreenState extends State<FocusScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24.0)),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 16.0,
+              ),
               child: SafeArea(
                 child: Column(
                   children: [
@@ -163,16 +165,18 @@ class _FocusScreenState extends State<FocusScreen> {
                       child: ListView.separated(
                         physics: const BouncingScrollPhysics(),
                         itemCount: durationOptions.length,
-                        separatorBuilder: (_, __) => const Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: Color(0xFFF3F4F6),
-                        ),
+                        separatorBuilder:
+                            (_, __) => const Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: Color(0xFFF3F4F6),
+                            ),
                         itemBuilder: (context, index) {
                           final item = durationOptions[index];
                           final String label = item['label'] as String;
                           final int minutes = item['minutes'] as int;
-                          final bool isSelected = _focusDurationMinutes == minutes;
+                          final bool isSelected =
+                              _focusDurationMinutes == minutes;
 
                           return InkWell(
                             onTap: () async {
@@ -181,14 +185,19 @@ class _FocusScreenState extends State<FocusScreen> {
                               });
                               setModalState(() {});
                               await UsageDataSaver.saveFocusDuration(minutes);
+                              await UsageDataSaver.clearFocusSessionStart();
+                              _loadFocusSettings();
                               if (ctx.mounted) {
                                 Navigator.pop(ctx);
                               }
                             },
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16.0),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16.0,
+                              ),
                               child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
                                     label,
@@ -198,7 +207,9 @@ class _FocusScreenState extends State<FocusScreen> {
                                       color: Colors.black,
                                     ),
                                   ),
-                                  _buildCustomRadioButton(isSelected: isSelected),
+                                  _buildCustomRadioButton(
+                                    isSelected: isSelected,
+                                  ),
                                 ],
                               ),
                             ),
@@ -222,20 +233,18 @@ class _FocusScreenState extends State<FocusScreen> {
       height: 22,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.black,
-          width: 2.0,
-        ),
+        border: Border.all(color: Colors.black, width: 2.0),
       ),
       padding: const EdgeInsets.all(3.0),
-      child: isSelected
-          ? Container(
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.black,
-              ),
-            )
-          : null,
+      child:
+          isSelected
+              ? Container(
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black,
+                ),
+              )
+              : null,
     );
   }
 
@@ -249,7 +258,10 @@ class _FocusScreenState extends State<FocusScreen> {
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20.0,
+                  vertical: 16.0,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -332,22 +344,33 @@ class _FocusScreenState extends State<FocusScreen> {
 
             // Bottom Action Button: Start Focus Session (30 min)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 16.0,
+              ),
               child: SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
                   onPressed: () async {
-                    final startTime = DateTime.now().millisecondsSinceEpoch;
-                    await UsageDataSaver.saveFocusSessionStart(startTime);
+                    int startTime = await UsageDataSaver.getFocusSessionStart();
+                    final nowMs = DateTime.now().millisecondsSinceEpoch;
+                    final totalMs = _focusDurationMinutes * 60 * 1000;
+
+                    if (startTime <= 0 || (nowMs - startTime) >= totalMs) {
+                      startTime = nowMs;
+                      await UsageDataSaver.saveFocusSessionStart(startTime);
+                    }
+
                     if (context.mounted) {
                       await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => FocusActiveSessionScreen(
-                            startTimeMs: startTime,
-                            durationMinutes: _focusDurationMinutes,
-                          ),
+                          builder:
+                              (_) => FocusActiveSessionScreen(
+                                startTimeMs: startTime,
+                                durationMinutes: _focusDurationMinutes,
+                              ),
                         ),
                       );
                       _loadFocusSettings();
@@ -362,7 +385,9 @@ class _FocusScreenState extends State<FocusScreen> {
                     elevation: 0,
                   ),
                   child: Text(
-                    'Start Focus Session (${_formatDurationLabel(_focusDurationMinutes)})',
+                    _isSessionActive
+                        ? 'Focus Session Active (${_formatDurationLabel(_focusDurationMinutes)})'
+                        : 'Start Focus Session (${_formatDurationLabel(_focusDurationMinutes)})',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -380,11 +405,16 @@ class _FocusScreenState extends State<FocusScreen> {
   Widget _buildBlockedAppsCardTile(BuildContext context) {
     final int count = _blockedPackages.length;
     String displayTitle = 'Add apps';
-    Widget iconWidget = const Icon(Icons.add_rounded, color: Colors.black87, size: 22);
+    Widget iconWidget = const Icon(
+      Icons.add_rounded,
+      color: Colors.black87,
+      size: 22,
+    );
 
     if (count == 1) {
       displayTitle = _firstBlockedAppInfo?.name ?? '1 app selected';
-      if (_firstBlockedAppInfo?.icon != null && _firstBlockedAppInfo!.icon!.isNotEmpty) {
+      if (_firstBlockedAppInfo?.icon != null &&
+          _firstBlockedAppInfo!.icon!.isNotEmpty) {
         iconWidget = ClipRRect(
           borderRadius: BorderRadius.circular(10.0),
           child: Image.memory(
@@ -395,7 +425,11 @@ class _FocusScreenState extends State<FocusScreen> {
           ),
         );
       } else {
-        iconWidget = const Icon(Icons.android_rounded, color: Colors.black87, size: 22);
+        iconWidget = const Icon(
+          Icons.android_rounded,
+          color: Colors.black87,
+          size: 22,
+        );
       }
     } else if (count > 1) {
       final int remaining = count - 1;
@@ -403,7 +437,8 @@ class _FocusScreenState extends State<FocusScreen> {
       final String firstName = _firstBlockedAppInfo?.name ?? 'App';
       displayTitle = '$firstName and $remaining more $appWord';
 
-      if (_firstBlockedAppInfo?.icon != null && _firstBlockedAppInfo!.icon!.isNotEmpty) {
+      if (_firstBlockedAppInfo?.icon != null &&
+          _firstBlockedAppInfo!.icon!.isNotEmpty) {
         iconWidget = ClipRRect(
           borderRadius: BorderRadius.circular(10.0),
           child: Image.memory(
@@ -414,7 +449,11 @@ class _FocusScreenState extends State<FocusScreen> {
           ),
         );
       } else {
-        iconWidget = const Icon(Icons.android_rounded, color: Colors.black87, size: 22);
+        iconWidget = const Icon(
+          Icons.android_rounded,
+          color: Colors.black87,
+          size: 22,
+        );
       }
     }
 
@@ -422,9 +461,7 @@ class _FocusScreenState extends State<FocusScreen> {
       onTap: () async {
         await Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => const FocusAppsScreen(),
-          ),
+          MaterialPageRoute(builder: (_) => const FocusAppsScreen()),
         );
         _loadFocusSettings();
       },
@@ -434,10 +471,7 @@ class _FocusScreenState extends State<FocusScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16.0),
-          border: Border.all(
-            color: const Color(0xFFE5E7EB),
-            width: 1.0,
-          ),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1.0),
         ),
         child: Row(
           children: [
@@ -486,10 +520,7 @@ class _FocusScreenState extends State<FocusScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16.0),
-          border: Border.all(
-            color: const Color(0xFFE5E7EB),
-            width: 1.0,
-          ),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1.0),
         ),
         child: Row(
           children: [

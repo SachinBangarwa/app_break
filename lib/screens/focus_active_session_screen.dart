@@ -46,15 +46,8 @@ class _FocusActiveSessionScreenState extends State<FocusActiveSessionScreen> {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
-        setState(() {
-          if (_remainingSeconds > 1) {
-            _remainingSeconds--;
-          } else {
-            _remainingSeconds = 0;
-            timer.cancel();
-            _stopSessionAndClose(isCompleted: true);
-          }
-        });
+        _calculateRemainingTime();
+        setState(() {});
       }
     });
   }
@@ -100,115 +93,118 @@ class _FocusActiveSessionScreenState extends State<FocusActiveSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-          child: Column(
-            children: [
-              const Spacer(),
+    return PopScope(
+      canPop: true, // Allows user to pop back from inside app
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7F8FA),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+            child: Column(
+              children: [
+                const Spacer(),
 
-              // Center Content: Shield Icon, Title, Live Timer
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Shield Icon with Heart inside
-                  Stack(
-                    alignment: Alignment.center,
-                    children: const [
-                      Icon(
-                        Icons.shield_outlined,
-                        size: 92,
+                // Center Content: Shield Icon, Title, Live Timer
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Shield Icon with Heart inside
+                    Stack(
+                      alignment: Alignment.center,
+                      children: const [
+                        Icon(
+                          Icons.shield_outlined,
+                          size: 92,
+                          color: Colors.black,
+                        ),
+                        Padding(
+                          padding: EdgeInsets.only(top: 4.0),
+                          child: Icon(
+                            Icons.favorite_rounded,
+                            size: 32,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Title: Stay focused
+                    const Text(
+                      'Stay focused',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
                         color: Colors.black,
+                        letterSpacing: -0.5,
                       ),
-                      Padding(
-                        padding: EdgeInsets.only(top: 4.0),
-                        child: Icon(
-                          Icons.favorite_rounded,
-                          size: 32,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Title: Stay focused
-                  const Text(
-                    'Stay focused',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                      letterSpacing: -0.5,
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  // Timer Display: e.g. 44:58
-                  Text(
-                    _formatTimerText(_remainingSeconds),
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                      letterSpacing: 0.5,
+                    // Timer Display: e.g. 44:58
+                    Text(
+                      _formatTimerText(_remainingSeconds),
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
 
-              const Spacer(),
+                const Spacer(),
 
-              // Bottom Action Buttons: Close app & Stop Focus Session
-              Column(
-                children: [
-                  // Close App Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        SystemNavigator.pop();
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.black,
-                        side: const BorderSide(
-                          color: Colors.black,
-                          width: 1.2,
+                // Bottom Action Buttons: Close app & Stop Focus Session
+                Column(
+                  children: [
+                    // Close App Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          SystemNavigator.pop();
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.black,
+                          side: const BorderSide(
+                            color: Colors.black,
+                            width: 1.2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16.0),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16.0),
+                        child: const Text(
+                          'Close app',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Stop Focus Session Link
+                    TextButton(
+                      onPressed: () => _stopSessionAndClose(isCompleted: false),
                       child: const Text(
-                        'Close app',
+                        'Stop Focus Session',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Stop Focus Session Link
-                  TextButton(
-                    onPressed: () => _stopSessionAndClose(isCompleted: false),
-                    child: const Text(
-                      'Stop Focus Session',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ],
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

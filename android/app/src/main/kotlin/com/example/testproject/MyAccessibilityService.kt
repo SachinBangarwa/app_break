@@ -164,6 +164,11 @@ class MyAccessibilityService : AccessibilityService() {
 
         // 2. Naye app ke liye limit checks aur scheduling chalenge
         if (packageName.isNotEmpty() && !isIgnoredPackage(packageName)) {
+            // Check Focus mode blocking directly in accessibility service
+            if (checkFocusModeAndShowOverlay(packageName)) {
+                return
+            }
+
             // DB se update active app list read karenge (taaki Flutter UI ke changes refresh ho sakein)
             reloadActiveAppsList()
 
@@ -405,6 +410,99 @@ class MyAccessibilityService : AccessibilityService() {
             lowerPkg.contains("ime")
         ) {
             return true
+        }
+        return false
+    }
+
+    private fun checkFocusModeAndShowOverlay(packageName: String): Boolean {
+        try {
+            Log.d("FocusDebug", "===============================================")
+            Log.d("FocusDebug", "[1] Event Received for package: '$packageName'")
+
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val allPrefs = prefs.all
+
+            // 1. Read session start time
+            val startVal = allPrefs["flutter.focus_session_start_time"]
+            val startTimeMs = when (startVal) {
+                is Long -> startVal
+                is Int -> startVal.toLong()
+                is String -> startVal.toLongOrNull() ?: 0L
+                else -> 0L
+            }
+
+            // 2. Read duration minutes
+            val durationVal = allPrefs["flutter.focus_duration_minutes"]
+            val durationMinutes = when (durationVal) {
+                is Int -> durationVal
+                is Long -> durationVal.toInt()
+                is String -> durationVal.toIntOrNull() ?: 30
+                else -> 30
+            }
+
+            val totalMs = durationMinutes * 60 * 1000L
+            val elapsedMs = if (startTimeMs > 0L) (System.currentTimeMillis() - startTimeMs) else 0L
+            val isSessionActive = startTimeMs > 0L && elapsedMs < totalMs
+
+            Log.d("FocusDebug", "[2] Local Prefs Fetched -> StartTime: $startTimeMs, Duration: $durationMinutes min, Elapsed: ${elapsedMs / 1000}s, IsActive: $isSessionActive")
+
+            if (!isSessionActive) {
+                Log.d("FocusDebug", "[3] Result: Focus Session is NOT active (or expired). Overlay will NOT trigger.")
+                return false
+            }
+
+            // 3. Read blocked packages list
+            val rawBlockedList = mutableSetOf<String>()
+            val rawAppsObj = allPrefs["flutter.focus_blocked_apps"]
+
+            if (rawAppsObj is String) {
+                var jsonStr = rawAppsObj.trim()
+                val bracketPos = jsonStr.indexOf('[')
+                val endBracketPos = jsonStr.lastIndexOf(']')
+                if (bracketPos != -1 && endBracketPos != -1 && endBracketPos > bracketPos) {
+                    jsonStr = jsonStr.substring(bracketPos, endBracketPos + 1)
+                }
+                try {
+                    val array = org.json.JSONArray(jsonStr)
+                    for (i in 0 until array.length()) {
+                        rawBlockedList.add(array.getString(i))
+                    }
+                } catch (e: Exception) {
+                    Log.e("FocusDebug", "Error parsing json array: ${e.message} for raw: $rawAppsObj")
+                }
+            } else if (rawAppsObj is Set<*>) {
+                rawAppsObj.filterIsInstance<String>().forEach { rawBlockedList.add(it) }
+            } else if (rawAppsObj is List<*>) {
+                rawAppsObj.filterIsInstance<String>().forEach { rawBlockedList.add(it) }
+            }
+
+            val isMatched = rawBlockedList.contains(packageName)
+            Log.d("FocusDebug", "[3] Blocked Apps List in Local: $rawBlockedList")
+            Log.d("FocusDebug", "[4] App Match Check -> Package '$packageName' in Blocked List? => $isMatched")
+
+            if (isMatched) {
+                Log.d("FocusDebug", "[5] SUCCESS: Triggering Native Focus Overlay Pop-up NOW for '$packageName'!")
+                NativeOverlayManager.showFocusOverlay(
+                    this,
+                    packageName,
+                    onCloseApp = {
+                        Log.d("FocusDebug", "User clicked Close App on Focus Overlay")
+                        openApp = null
+                        openAppStart = 0
+                        goHome()
+                    },
+                    onStopFocusSession = {
+                        Log.d("FocusDebug", "User clicked Stop Focus Session on Focus Overlay")
+                        prefs.edit().remove("flutter.focus_session_start_time").apply()
+                        NativeOverlayManager.removeOverlay()
+                    }
+                )
+                return true
+            } else {
+                Log.d("FocusDebug", "[5] App '$packageName' is not in blocked list. Overlay will NOT trigger.")
+            }
+        } catch (e: Exception) {
+            Log.e("FocusDebug", "Exception in checkFocusModeAndShowOverlay", e)
         }
         return false
     }

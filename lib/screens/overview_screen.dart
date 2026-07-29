@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
+import 'package:testproject/device_app/controller/home_controller.dart';
 import 'package:testproject/device_app/localSaver/db_helper.dart';
 import 'package:testproject/device_app/screens/device_apps_screen.dart';
 import 'package:testproject/screens/notifications_screen.dart';
@@ -13,6 +15,14 @@ class OverviewScreen extends StatefulWidget {
 }
 
 class _OverviewScreenState extends State<OverviewScreen> {
+  @override
+  void initState() {
+    super.initState();
+    if (!Get.isRegistered<HomeController>()) {
+      Get.put(HomeController(), permanent: true);
+    }
+  }
+
   void _openAllAppsBottomSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,

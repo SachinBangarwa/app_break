@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Same pattern as LocalDataSaver — all SharedPreferences reads/writes for
@@ -112,7 +113,10 @@ class UsageDataSaver {
   // =======================================================================
   static Future<bool> saveCommittedUsage(String packageName, int millis) async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
-    return await preferences.setInt('$committedUsagePrefix$packageName', millis);
+    return await preferences.setInt(
+      '$committedUsagePrefix$packageName',
+      millis,
+    );
   }
 
   static Future<int> getCommittedUsage(String packageName) async {
@@ -122,7 +126,10 @@ class UsageDataSaver {
 
   /// Adds durationMillis on top of whatever is already committed for this
   /// package, and saves it back. Used every time a session actually ends.
-  static Future<void> addCommittedUsage(String packageName, int durationMillis) async {
+  static Future<void> addCommittedUsage(
+    String packageName,
+    int durationMillis,
+  ) async {
     final prev = await getCommittedUsage(packageName);
     await saveCommittedUsage(packageName, prev + durationMillis);
   }
@@ -182,7 +189,12 @@ class UsageDataSaver {
   // =======================================================================
   // limit config & time left helpers
   // =======================================================================
-  static Future<void> saveLimitConfig(String packageName, String appName, int limitMs, int timeLeftMs) async {
+  static Future<void> saveLimitConfig(
+    String packageName,
+    String appName,
+    int limitMs,
+    int timeLeftMs,
+  ) async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
     await preferences.setString('$namePrefix$packageName', appName);
     await preferences.setInt('$limitPrefix$packageName', limitMs);
@@ -205,7 +217,10 @@ class UsageDataSaver {
   // =======================================================================
   static Future<bool> saveDelayEnabled(String packageName, bool enabled) async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
-    return await preferences.setBool('$delayEnabledPrefix$packageName', enabled);
+    return await preferences.setBool(
+      '$delayEnabledPrefix$packageName',
+      enabled,
+    );
   }
 
   static Future<bool> isDelayEnabled(String packageName) async {

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:testproject/device_app/controller/home_controller.dart';
 import 'package:testproject/screens/blocking_screen.dart';
 import 'package:testproject/screens/focus_screen.dart';
 import 'package:testproject/screens/overview_screen.dart';
@@ -19,6 +21,9 @@ class _MainTabScreenState extends State<MainTabScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    if (!Get.isRegistered<HomeController>()) {
+      Get.put(HomeController(), permanent: true);
+    }
   }
 
   void _onTabSelected(int index) {

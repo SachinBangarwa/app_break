@@ -22,11 +22,15 @@ object NativeOverlayManager {
     private var currentOverlayView: View? = null
     var activeOverlayPackage: String? = null // Tracks currently active overlay app
 
+    private val focusHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var focusRunnable: Runnable? = null
+
     /**
      * Kisi bhi chalu overlay view ko screen se safai se remove (delete) karta hai.
      */
     fun removeOverlay() {
         try {
+            focusRunnable?.let { focusHandler.removeCallbacks(it) }
             if (windowManager != null && currentOverlayView != null) {
                 // WindowManager se view delete karenge
                 windowManager?.removeView(currentOverlayView)
@@ -187,6 +191,112 @@ object NativeOverlayManager {
         btn.setOnClickListener {
             removeOverlay() // Select hote hi overlay remove hoga
             onSelect(minutes) // Selected time session start ho jayega
+        }
+    }
+
+    /**
+     * showFocusOverlay:
+     * Focus Session active hone par full-screen Focus overlay pop-up show karta hai.
+     */
+    fun showFocusOverlay(
+        context: Context,
+        packageName: String,
+        onCloseApp: () -> Unit,
+        onStopFocusSession: () -> Unit
+    ) {
+        removeOverlay()
+        activeOverlayPackage = packageName
+
+        windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+        val inflater = context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+        val view = inflater.inflate(R.layout.native_focus_overlay, null)
+        currentOverlayView = view
+
+        val txtTimer = view.findViewById<TextView>(R.id.focus_timer_text)
+        val btnClose = view.findViewById<Button>(R.id.btn_focus_close_app)
+        val btnStop = view.findViewById<TextView>(R.id.btn_stop_focus)
+
+        // Outlined button background design
+        val closeBtnBg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 16f * context.resources.displayMetrics.density
+            setColor(Color.parseColor("#F7F8FA"))
+            setStroke((1.2f * context.resources.displayMetrics.density).toInt(), Color.parseColor("#000000"))
+        }
+        btnClose.background = closeBtnBg
+
+        // Close app action
+        btnClose.setOnClickListener {
+            removeOverlay()
+            onCloseApp()
+        }
+
+        // Stop Focus Session action
+        btnStop.setOnClickListener {
+            removeOverlay()
+            onStopFocusSession()
+        }
+
+        // Live timer update every 1 second
+        focusRunnable?.let { focusHandler.removeCallbacks(it) }
+        focusRunnable = object : Runnable {
+            override fun run() {
+                val remainingSecs = getFocusRemainingSeconds(context)
+                if (remainingSecs <= 0) {
+                    removeOverlay()
+                    onCloseApp()
+                } else {
+                    val hours = remainingSecs / 3600
+                    val minutes = (remainingSecs % 3600) / 60
+                    val secs = remainingSecs % 60
+                    val timerStr = if (hours > 0) {
+                        String.format("%02d:%02d:%02d", hours, minutes, secs)
+                    } else {
+                        String.format("%02d:%02d", minutes, secs)
+                    }
+                    txtTimer.text = timerStr
+                    focusHandler.postDelayed(this, 1000L)
+                }
+            }
+        }
+        focusRunnable?.let { focusHandler.post(it) }
+
+        val params = getOverlayLayoutParams()
+        try {
+            windowManager?.addView(view, params)
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun getFocusRemainingSeconds(context: Context): Long {
+        try {
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val allPrefs = prefs.all
+
+            val startVal = allPrefs["flutter.focus_session_start_time"]
+            val startTimeMs = when (startVal) {
+                is Long -> startVal
+                is Int -> startVal.toLong()
+                is String -> startVal.toLongOrNull() ?: 0L
+                else -> 0L
+            }
+            if (startTimeMs <= 0L) return 0L
+
+            val durationVal = allPrefs["flutter.focus_duration_minutes"]
+            val durationMinutes = when (durationVal) {
+                is Int -> durationVal
+                is Long -> durationVal.toInt()
+                is String -> durationVal.toIntOrNull() ?: 30
+                else -> 30
+            }
+
+            val totalMs = durationMinutes * 60 * 1000L
+            val elapsedMs = System.currentTimeMillis() - startTimeMs
+            val remainingMs = totalMs - elapsedMs
+            return if (remainingMs > 0) remainingMs / 1000L else 0L
+        } catch (e: Exception) {
+            return 0L
         }
     }
 

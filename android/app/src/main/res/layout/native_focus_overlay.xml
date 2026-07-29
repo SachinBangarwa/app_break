@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F7F8FA"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="24dp">
+
+    <!-- Top Spacing -->
+    <View
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="2" />
+
+    <!-- Center Icon: Shield Icon -->
+    <ImageView
+        android:id="@+id/focus_icon"
+        android:layout_width="92dp"
+        android:layout_height="92dp"
+        android:src="@android:drawable/ic_lock_lock"
+        android:tint="#000000"
+        android:contentDescription="Shield Icon" />
+
+    <!-- Title: Stay focused -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Stay focused"
+        android:textColor="#000000"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        android:textAlignment="center" />
+
+    <!-- Live Timer Text Display -->
+    <TextView
+        android:id="@+id/focus_timer_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="00:00"
+        android:textColor="#333333"
+        android:textSize="22sp"
+        android:textStyle="normal"
+        android:gravity="center" />
+
+    <!-- Bottom Spacing -->
+    <View
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="3" />
+
+    <!-- Outlined Button: Close App -->
+    <Button
+        android:id="@+id/btn_focus_close_app"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@android:drawable/btn_default"
+        android:text="Close app"
+        android:textColor="#000000"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Text Button: Stop Focus Session -->
+    <TextView
+        android:id="@+id/btn_stop_focus"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center"
+        android:text="Stop Focus Session"
+        android:textColor="#000000"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:clickable="true"
+        android:focusable="true"
+        android:layout_marginBottom="16dp" />
+
+</LinearLayout>
