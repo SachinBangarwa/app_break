@@ -55,6 +55,7 @@ class MyAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         try {
+            reloadFocusCacheFromPrefs(this)
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             prefs.edit().putBoolean("flutter.is_accessibility_enabled", true).apply()
 
@@ -438,6 +439,69 @@ class MyAccessibilityService : AccessibilityService() {
     companion object {
         var lastDismissedPackage: String? = null
         var lastDismissedTimeMs: Long = 0L
+
+        @Volatile var cachedStartTimeMs: Long = -1L
+        @Volatile var cachedDurationMinutes: Int = -1
+        @Volatile var cachedBlockedApps: Set<String>? = null
+        @Volatile var isCacheInitialized: Boolean = false
+
+        fun reloadFocusCacheFromPrefs(context: Context) {
+            try {
+                val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val allPrefs = prefs.all
+
+                val startVal = allPrefs["flutter.focus_session_start_time"]
+                cachedStartTimeMs = when (startVal) {
+                    is Long -> startVal
+                    is Int -> startVal.toLong()
+                    is String -> startVal.toLongOrNull() ?: 0L
+                    else -> 0L
+                }
+
+                val durationVal = allPrefs["flutter.focus_duration_minutes"]
+                cachedDurationMinutes = when (durationVal) {
+                    is Int -> durationVal
+                    is Long -> durationVal.toInt()
+                    is String -> durationVal.toIntOrNull() ?: 30
+                    else -> 30
+                }
+
+                val rawBlockedList = mutableSetOf<String>()
+                val rawAppsObj = allPrefs["flutter.focus_blocked_apps"]
+                if (rawAppsObj is String) {
+                    var jsonStr = rawAppsObj.trim()
+                    val bracketPos = jsonStr.indexOf('[')
+                    val endBracketPos = jsonStr.lastIndexOf(']')
+                    if (bracketPos != -1 && endBracketPos != -1 && endBracketPos > bracketPos) {
+                        jsonStr = jsonStr.substring(bracketPos, endBracketPos + 1)
+                    }
+                    try {
+                        val array = org.json.JSONArray(jsonStr)
+                        for (i in 0 until array.length()) {
+                            rawBlockedList.add(array.getString(i))
+                        }
+                    } catch (_: Exception) {}
+                } else if (rawAppsObj is Set<*>) {
+                    rawAppsObj.filterIsInstance<String>().forEach { rawBlockedList.add(it) }
+                } else if (rawAppsObj is List<*>) {
+                    rawAppsObj.filterIsInstance<String>().forEach { rawBlockedList.add(it) }
+                }
+
+                cachedBlockedApps = rawBlockedList
+                isCacheInitialized = true
+                Log.d("FocusDebug", "[FocusCache] Reloaded from Prefs -> Start: $cachedStartTimeMs, Duration: $cachedDurationMinutes, Apps: $cachedBlockedApps")
+            } catch (e: Exception) {
+                Log.e("FocusDebug", "Error in reloadFocusCacheFromPrefs", e)
+            }
+        }
+
+        fun updateFocusCache(startTimeMs: Long, durationMinutes: Int, blockedApps: Set<String>) {
+            cachedStartTimeMs = startTimeMs
+            cachedDurationMinutes = durationMinutes
+            cachedBlockedApps = blockedApps
+            isCacheInitialized = true
+            Log.d("FocusDebug", "[FocusCache] Live Updated -> Start: $startTimeMs, Duration: $durationMinutes, Apps: $blockedApps")
+        }
     }
 
     private fun checkFocusModeAndShowOverlay(packageName: String): Boolean {
@@ -451,65 +515,27 @@ class MyAccessibilityService : AccessibilityService() {
                 return false
             }
 
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val allPrefs = prefs.all
-
-            // 1. Read session start time
-            val startVal = allPrefs["flutter.focus_session_start_time"]
-            val startTimeMs = when (startVal) {
-                is Long -> startVal
-                is Int -> startVal.toLong()
-                is String -> startVal.toLongOrNull() ?: 0L
-                else -> 0L
+            if (!isCacheInitialized) {
+                reloadFocusCacheFromPrefs(this)
             }
 
-            // 2. Read duration minutes
-            val durationVal = allPrefs["flutter.focus_duration_minutes"]
-            val durationMinutes = when (durationVal) {
-                is Int -> durationVal
-                is Long -> durationVal.toInt()
-                is String -> durationVal.toIntOrNull() ?: 30
-                else -> 30
-            }
+            val startTimeMs = cachedStartTimeMs
+            val durationMinutes = if (cachedDurationMinutes > 0) cachedDurationMinutes else 30
+            val blockedList = cachedBlockedApps ?: emptySet()
 
             val totalMs = durationMinutes * 60 * 1000L
             val elapsedMs = if (startTimeMs > 0L) (System.currentTimeMillis() - startTimeMs) else 0L
             val isSessionActive = startTimeMs > 0L && elapsedMs < totalMs
 
-            Log.d("FocusDebug", "[2] Local Prefs Fetched -> StartTime: $startTimeMs, Duration: $durationMinutes min, Elapsed: ${elapsedMs / 1000}s, IsActive: $isSessionActive")
+            Log.d("FocusDebug", "[2] Fast RAM Cache Fetched -> StartTime: $startTimeMs, Duration: $durationMinutes min, Elapsed: ${elapsedMs / 1000}s, IsActive: $isSessionActive")
 
             if (!isSessionActive) {
                 Log.d("FocusDebug", "[3] Result: Focus Session is NOT active (or expired). Overlay will NOT trigger.")
                 return false
             }
 
-            // 3. Read blocked packages list
-            val rawBlockedList = mutableSetOf<String>()
-            val rawAppsObj = allPrefs["flutter.focus_blocked_apps"]
-
-            if (rawAppsObj is String) {
-                var jsonStr = rawAppsObj.trim()
-                val bracketPos = jsonStr.indexOf('[')
-                val endBracketPos = jsonStr.lastIndexOf(']')
-                if (bracketPos != -1 && endBracketPos != -1 && endBracketPos > bracketPos) {
-                    jsonStr = jsonStr.substring(bracketPos, endBracketPos + 1)
-                }
-                try {
-                    val array = org.json.JSONArray(jsonStr)
-                    for (i in 0 until array.length()) {
-                        rawBlockedList.add(array.getString(i))
-                    }
-                } catch (e: Exception) {
-                    Log.e("FocusDebug", "Error parsing json array: ${e.message} for raw: $rawAppsObj")
-                }
-            } else if (rawAppsObj is Set<*>) {
-                rawAppsObj.filterIsInstance<String>().forEach { rawBlockedList.add(it) }
-            } else if (rawAppsObj is List<*>) {
-                rawAppsObj.filterIsInstance<String>().forEach { rawBlockedList.add(it) }
-            }
-
-            val isMatched = rawBlockedList.contains(packageName)
-            Log.d("FocusDebug", "[3] Blocked Apps List in Local: $rawBlockedList")
+            val isMatched = blockedList.contains(packageName)
+            Log.d("FocusDebug", "[3] Blocked Apps List in Cache: $blockedList")
             Log.d("FocusDebug", "[4] App Match Check -> Package '$packageName' in Blocked List? => $isMatched")
 
             if (isMatched) {

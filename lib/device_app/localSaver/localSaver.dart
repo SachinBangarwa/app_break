@@ -341,14 +341,31 @@ class UsageDataSaver {
   }
 
   // =======================================================================
-  // Focus Session Storage
+  // Focus Session Storage & Live Native RAM Sync
   // =======================================================================
+  static const MethodChannel _focusChannel = MethodChannel('com.example.testproject/package_change');
+
+  static Future<void> syncFocusCacheToNative() async {
+    try {
+      final startTime = await getFocusSessionStart();
+      final duration = await getFocusDuration();
+      final apps = await getFocusBlockedApps();
+      await _focusChannel.invokeMethod('updateFocusSession', {
+        'startTime': startTime,
+        'duration': duration,
+        'blockedApps': apps,
+      });
+    } catch (_) {}
+  }
+
   static String focusBlockedAppsKey = 'focus_blocked_apps';
   static String focusDurationMinutesKey = 'focus_duration_minutes';
 
   static Future<bool> saveFocusBlockedApps(List<String> packageNames) async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
-    return await preferences.setStringList(focusBlockedAppsKey, packageNames);
+    final res = await preferences.setStringList(focusBlockedAppsKey, packageNames);
+    await syncFocusCacheToNative();
+    return res;
   }
 
   static Future<List<String>> getFocusBlockedApps() async {
@@ -358,7 +375,9 @@ class UsageDataSaver {
 
   static Future<bool> saveFocusDuration(int minutes) async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
-    return await preferences.setInt(focusDurationMinutesKey, minutes);
+    final res = await preferences.setInt(focusDurationMinutesKey, minutes);
+    await syncFocusCacheToNative();
+    return res;
   }
 
   static Future<int> getFocusDuration() async {
@@ -370,7 +389,9 @@ class UsageDataSaver {
 
   static Future<bool> saveFocusSessionStart(int timestamp) async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
-    return await preferences.setInt(focusSessionStartTimeKey, timestamp);
+    final res = await preferences.setInt(focusSessionStartTimeKey, timestamp);
+    await syncFocusCacheToNative();
+    return res;
   }
 
   static Future<int> getFocusSessionStart() async {
@@ -380,6 +401,8 @@ class UsageDataSaver {
 
   static Future<bool> clearFocusSessionStart() async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
-    return await preferences.remove(focusSessionStartTimeKey);
+    final res = await preferences.remove(focusSessionStartTimeKey);
+    await syncFocusCacheToNative();
+    return res;
   }
 }

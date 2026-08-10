@@ -100,6 +100,29 @@ class MainActivity : FlutterActivity() {
                     result.success(launched)
                 }
 
+                "updateFocusSession" -> {
+                    val startTime = when (val s = call.argument<Any>("startTime")) {
+                        is Long -> s
+                        is Int -> s.toLong()
+                        is String -> s.toLongOrNull() ?: 0L
+                        else -> 0L
+                    }
+                    val duration = when (val d = call.argument<Any>("duration")) {
+                        is Int -> d
+                        is Long -> d.toInt()
+                        is String -> d.toIntOrNull() ?: 30
+                        else -> 30
+                    }
+                    val rawList = call.argument<List<String>>("blockedApps") ?: emptyList()
+                    MyAccessibilityService.updateFocusCache(startTime, duration, rawList.toSet())
+                    result.success(true)
+                }
+
+                "reloadFocusSession" -> {
+                    MyAccessibilityService.reloadFocusCacheFromPrefs(this)
+                    result.success(true)
+                }
+
                 else -> {
                     result.notImplemented()
                 }
